@@ -89,61 +89,200 @@ async function loadNewTransaction() {
   });
 }
 
+function pickRandomReviewers(users, excludeIds, count = 3) {
+  const eligible = users.filter(u => !excludeIds.includes(u.id));
+
+  // Shuffle
+  for (let i = eligible.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [eligible[i], eligible[j]] = [eligible[j], eligible[i]];
+  }
+
+  return eligible.slice(0, Math.min(count, eligible.length));
+}
+
 async function createTransaction() {
   const toUser = document.getElementById("toUser").value;
   const amount = parseInt(document.getElementById("amount").value);
   const reason = document.getElementById("reason").value;
 
-  await supabaseClient.from("transactions").insert([{
-    from_user: currentUser.id,
-    to_user: toUser,
-    amount: amount,
-    reason: reason,
-    status: "pending",
-    created_by: currentUser.id
-  }]);
+  if (!amount || !reason) {
+    alert("Een of meer velden zijn leeg, bitch.");
+    return;
+  }
 
-  alert("Transactie Verzocht");
+  //Insert transaction
+  const { data: txData, error: txError } = await supabaseClient
+    .from("transactions")
+    .insert([{
+      from_user: currentUser.id,
+      to_user: toUser,
+      amount: amount,
+      reason: reason,
+      status: "pending",
+      created_by: currentUser.id
+    }])
+    .select()
+    .single();
+
+  if (txError) {
+    alert("Er is een fout opgetreden, probeer later opnieuw.");
+    return;
+  }
+
+  //Haal alle users op
+  const { data: users } = await supabaseClient.from("users").select("*");
+
+  //Kies random jury (3 personen)
+  const reviewers = pickRandomReviewers(
+    users,
+    [currentUser.id, toUser],
+    3
+  );
+
+  //Maak approval records aan
+  const approvalRows = reviewers.map(r => ({
+    transaction_id: txData.id,
+    reviewer_id: r.id,
+    decision: "pending"
+  }));
+
+  await supabaseClient.from("approvals").insert(approvalRows);
+
+  alert("Transactie verzocht");
+  
+  // Reset form
+  document.getElementById("amount").value = "";
+  document.getElementById("reason").value = "";
+
   loadPending();
 }
 
 async function loadPending() {
-  const { data } = await supabaseClient
-    .from("transactions")
+
+  const { data: approvals } = await supabaseClient
+    .from("approvals")
     .select("*")
-    .eq("status", "pending");
+    .eq("reviewer_id", currentUser.id)
+    .eq("decision", "pending");
 
   const pending = document.getElementById("pending");
-  pending.innerHTML = "<h2>Transacties In Behandeling</h2>";
+  pending.innerHTML = "<h2>Te Beoordelen Transacties</h2>";
 
-  data.forEach(tx => {
+  if (!approvals || approvals.length === 0) {
+    pending.innerHTML += "<p>Geen openstaande beoordelingen.</p>";
+    return;
+  }
+
+  for (let approval of approvals) {
+
+    const { data: tx } = await supabaseClient
+      .from("transactions")
+      .select("*")
+      .eq("id", approval.transaction_id)
+      .single();
+
     pending.innerHTML += `
       <div>
         ${tx.amount} credits <i>${tx.reason}</i>
-        <button onclick="approve('${tx.id}')">Approve</button>
-        <button onclick="reject('${tx.id}')">Reject</button>
+        <button onclick="approve('${approval.id}')">Approve</button>
+        <button onclick="reject('${approval.id}')">Reject</button>
       </div>
     `;
-  });
+  }
 }
 
-async function approve(id) {
-  const { data } = await supabaseClient.from("transactions").select("*").eq("id", id).single();
+async function approve(approvalId) {
 
-  await supabaseClient.from("transactions").update({ status: "approved" }).eq("id", id);
+  //Update deze approval
+  await supabaseClient
+    .from("approvals")
+    .update({ decision: "approved" })
+    .eq("id", approvalId);
 
-  const { data: toUser } = await supabaseClient.from("users").select("*").eq("id", data.to_user).single();
-  const { data: fromUser } = await supabaseClient.from("users").select("*").eq("id", data.from_user).single();
+  //Haal approval record op
+  const { data: approval } = await supabaseClient
+    .from("approvals")
+    .select("*")
+    .eq("id", approvalId)
+    .single();
 
-  await supabaseClient.from("users").update({ saldo: toUser.saldo + data.amount }).eq("id", data.to_user);
-  await supabaseClient.from("users").update({ saldo: fromUser.saldo - data.amount }).eq("id", data.from_user);
+  const transactionId = approval.transaction_id;
+
+  //Check alle approvals van deze transactie
+  const { data: allApprovals } = await supabaseClient
+    .from("approvals")
+    .select("*")
+    .eq("transaction_id", transactionId);
+
+  const allApproved = allApprovals.every(a => a.decision === "approved");
+
+  if (allApproved) {
+
+    //Haal transactie op
+    const { data: tx } = await supabaseClient
+      .from("transactions")
+      .select("*")
+      .eq("id", transactionId)
+      .single();
+
+    //Update transaction status
+    await supabaseClient
+      .from("transactions")
+      .update({ status: "approved" })
+      .eq("id", transactionId);
+
+    //Update saldo
+    const { data: toUser } = await supabaseClient
+      .from("users")
+      .select("*")
+      .eq("id", tx.to_user)
+      .single();
+
+    const { data: fromUser } = await supabaseClient
+      .from("users")
+      .select("*")
+      .eq("id", tx.from_user)
+      .single();
+
+    await supabaseClient
+      .from("users")
+      .update({ saldo: toUser.saldo + tx.amount })
+      .eq("id", tx.to_user);
+
+    await supabaseClient
+      .from("users")
+      .update({ saldo: fromUser.saldo - tx.amount })
+      .eq("id", tx.from_user);
+  }
 
   loadHome();
   loadPending();
 }
 
-async function reject(id) {
-  await supabaseClient.from("transactions").update({ status: "rejected" }).eq("id", id);
+async function reject(approvalId) {
+
+  //Haal approval op
+  const { data: approval } = await supabaseClient
+    .from("approvals")
+    .select("*")
+    .eq("id", approvalId)
+    .single();
+
+  const transactionId = approval.transaction_id;
+
+  //Update deze approval
+  await supabaseClient
+    .from("approvals")
+    .update({ decision: "rejected" })
+    .eq("id", approvalId);
+
+  //Zet volledige transactie op rejected
+  await supabaseClient
+    .from("transactions")
+    .update({ status: "rejected" })
+    .eq("id", transactionId);
+
   loadPending();
 }
 
