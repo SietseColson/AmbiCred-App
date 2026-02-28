@@ -55,7 +55,9 @@ async function initApp() {
   loadHome();
   loadNewTransaction();
   loadPending();
-  loadHistory();
+  if (currentUser) {
+    loadHistory();
+  }
 }
 
 async function loadHome() {
@@ -157,6 +159,7 @@ async function createTransaction() {
   document.getElementById("reason").value = "";
 
   loadPending();
+  loadHistory();
 }
 
 async function loadHistory() {
@@ -165,6 +168,11 @@ async function loadHistory() {
     .from("transactions")
     .select("*")
     .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("History error:", error);
+    return;
+  }
 
   const historyDiv = document.getElementById("history");
   historyDiv.innerHTML = "<h2>Actieve Transacties</h2>";
@@ -196,7 +204,9 @@ async function loadHistory() {
       .eq("transaction_id", tx.id);
 
     // Format datum
-    const date = new Date(tx.created_at).toLocaleString();
+    const date = tx.created_at
+      ? new Date(tx.created_at).toLocaleString()
+      : "Onbekende datum";
 
     // Bouw jury balk
     let juryHTML = `<div class="jury-bar">`;
