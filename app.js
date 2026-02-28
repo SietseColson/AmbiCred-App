@@ -52,11 +52,11 @@ function showScreen(name) {
 }
 
 async function initApp() {
-  loadHome();
-  loadNewTransaction();
-  loadPending();
+  await loadHome();
+  await loadNewTransaction();
+  await loadPending();
   if (currentUser) {
-    loadHistory();
+    await loadHistory();
   }
 }
 
