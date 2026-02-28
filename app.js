@@ -164,15 +164,10 @@ async function createTransaction() {
 
 async function loadHistory() {
 
-  const { data: transactions } = await supabaseClient
+  const { data: transactions, error } = await supabaseClient
     .from("transactions")
     .select("*")
     .order("created_at", { ascending: false });
-
-  if (error) {
-    console.error("History error:", error);
-    return;
-  }
 
   const historyDiv = document.getElementById("history");
   historyDiv.innerHTML = "<h2>Actieve Transacties</h2>";
@@ -257,7 +252,7 @@ async function loadPending() {
     .eq("reviewer_id", currentUser.id)
     .eq("decision", "pending");
 
-  const pending = document.getElementById("pending");
+  const pending = document.getElementById("pendingList");
   pending.innerHTML = "<h2>Te Beoordelen Transacties</h2>";
 
   if (!approvals || approvals.length === 0) {
