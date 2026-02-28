@@ -1,7 +1,8 @@
 {
-  "name": "Credit App",
-  "short_name": "Credits",
-  "start_url": "/index.html",
+  "name": "AmbiCred",
+  "short_name": "AmbiCred",
+  "start_url": "/AmbiCred-App/index.html",
+  "scope": "/AmbiCred-App/",
   "display": "standalone",
   "background_color": "#f5f7fa",
   "theme_color": "#4f46e5",
