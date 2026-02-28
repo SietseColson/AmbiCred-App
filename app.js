@@ -55,6 +55,7 @@ async function initApp() {
   loadHome();
   loadNewTransaction();
   loadPending();
+  loadHistory();
 }
 
 async function loadHome() {
@@ -158,6 +159,86 @@ async function createTransaction() {
   loadPending();
 }
 
+async function loadHistory() {
+
+  const { data: transactions } = await supabaseClient
+    .from("transactions")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  const historyDiv = document.getElementById("history");
+  historyDiv.innerHTML = "<h2>Actieve Transacties</h2>";
+
+  if (!transactions || transactions.length === 0) {
+    historyDiv.innerHTML += "<p>Momenteel geen actieve transacties.</p>";
+    return;
+  }
+
+  for (let tx of transactions) {
+
+    // Haal users op
+    const { data: fromUser } = await supabaseClient
+      .from("users")
+      .select("naam")
+      .eq("id", tx.from_user)
+      .single();
+
+    const { data: toUser } = await supabaseClient
+      .from("users")
+      .select("naam")
+      .eq("id", tx.to_user)
+      .single();
+
+    // Haal approvals op
+    const { data: approvals } = await supabaseClient
+      .from("approvals")
+      .select("*")
+      .eq("transaction_id", tx.id);
+
+    // Format datum
+    const date = new Date(tx.created_at).toLocaleString();
+
+    // Bouw jury balk
+    let juryHTML = `<div class="jury-bar">`;
+
+    for (let approval of approvals) {
+
+      const { data: reviewer } = await supabaseClient
+        .from("users")
+        .select("naam")
+        .eq("id", approval.reviewer_id)
+        .single();
+
+      const statusClass =
+        approval.decision === "approved"
+          ? "jury-approved"
+          : approval.decision === "rejected"
+          ? "jury-rejected"
+          : "jury-pending";
+
+      juryHTML += `
+        <div class="jury-box ${statusClass}">
+          ${reviewer.naam}
+        </div>
+      `;
+    }
+
+    juryHTML += `</div>`;
+
+    historyDiv.innerHTML += `
+      <div class="transaction-widget">
+        <div class="tx-line1">
+          ${date} — ${fromUser.naam} → ${toUser.naam} — <strong>${tx.amount} credits</strong>
+        </div>
+        <div class="tx-line2">
+          ${tx.reason}
+        </div>
+        ${juryHTML}
+      </div>
+    `;
+  }
+}
+
 async function loadPending() {
 
   const { data: approvals } = await supabaseClient
@@ -258,6 +339,7 @@ async function approve(approvalId) {
 
   loadHome();
   loadPending();
+  loadHistory();
 }
 
 async function reject(approvalId) {
@@ -284,6 +366,7 @@ async function reject(approvalId) {
     .eq("id", transactionId);
 
   loadPending();
+  loadHistory();
 }
 
 loadUsers();

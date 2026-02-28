@@ -123,3 +123,51 @@ input, select {
   margin-bottom: 16px;
   text-align: center;
 }
+
+.transaction-widget {
+  background: white;
+  padding: 16px;
+  border-radius: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.06);
+}
+
+.tx-line1 {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.tx-line2 {
+  margin-bottom: 12px;
+  color: #555;
+}
+
+.jury-bar {
+  display: flex;
+  gap: 8px;
+}
+
+.jury-box {
+  flex: 1;
+  padding: 8px;
+  text-align: center;
+  border-radius: 10px;
+  font-size: 14px;
+  background-color: #e5e7eb;
+  color: #333;
+}
+
+.jury-approved {
+  background-color: #10b981;
+  color: white;
+}
+
+.jury-rejected {
+  background-color: #ef4444;
+  color: white;
+}
+
+.jury-pending {
+  background-color: #d1d5db;
+  color: #333;
+}
