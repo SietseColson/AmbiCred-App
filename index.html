@@ -27,7 +27,7 @@
 <div id="appScreen" class="hidden">
 
   <nav>
-    <button onclick="showScreen('home'); loadhome()">Home</button>
+    <button onclick="showScreen('home'); loadHome()">Home</button>
     <button onclick="showScreen('new')">Nieuwe Transactie</button>
     <button onclick="showScreen('pending')">Transacties In Behandeling</button>
     <button onclick="logout()">LogOut</button>
@@ -35,8 +35,9 @@
 
   <div id="home" class="screen"></div>
   <div id="new" class="screen hidden"></div>
+
   <div id="pending" class="screen hidden">
-    <div id="history" class="screen"></div>
+    <div id="history"></div>
   </div>
   
 
