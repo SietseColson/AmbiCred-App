@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Credit App</title>
+
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="style.css">
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+
+<body>
+
+<div id="loginScreen">
+  <h1>Wie ben je?</h1>
+  <div id="userButtons"></div>
+</div>
+
+<div id="pinScreen" class="hidden">
+  <h2 id="selectedName"></h2>
+  <input type="password" id="pinInput" placeholder="Pincode">
+  <button onclick="login()">Login</button>
+</div>
+
+<div id="appScreen" class="hidden">
+
+  <nav>
+    <button onclick="showScreen('home')">Home</button>
+    <button onclick="showScreen('new')">Nieuwe Transactie</button>
+    <button onclick="showScreen('pending')">Transacties In Behandeling</button>
+    <button onclick="logout()">LogOut</button>
+  </nav>
+
+  <div id="home" class="screen"></div>
+  <div id="new" class="screen hidden"></div>
+  <div id="pending" class="screen hidden"></div>
+
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

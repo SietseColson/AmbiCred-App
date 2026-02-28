@@ -1,0 +1,125 @@
+/* Algemene body styling */
+body {
+  font-family: 'Arial', sans-serif;
+  background-color: #f5f7fa;
+  color: #1a1a1a;
+  margin: 0;
+  padding: 0;
+}
+
+/* Container voor scherminhoud */
+#loginScreen, #pinScreen, #appScreen {
+  max-width: 500px;
+  margin: 50px auto;
+  padding: 20px 30px;
+  background-color: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+}
+
+/* Headers */
+h1, h2 {
+  text-align: center;
+  margin-bottom: 20px;
+  font-weight: 600;
+  color: #111827;
+}
+
+/* Buttons algemeen */
+button {
+  font-family: inherit;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+/* User buttons op login scherm */
+.user-button {
+  display: block;
+  width: 100%;
+  margin-bottom: 12px;
+  background-color: #4f46e5;
+  color: white;
+  font-size: 16px;
+}
+
+.user-button:hover {
+  background-color: #4338ca;
+}
+
+/* Nav buttons */
+nav {
+  display: flex;
+  justify-content: space-around;
+  margin-bottom: 20px;
+}
+
+nav button {
+  background-color: #e0e7ff;
+  color: #3730a3;
+  flex: 1;
+  margin: 0 5px;
+}
+
+nav button:hover {
+  background-color: #c7d2fe;
+}
+
+/* Inputvelden */
+input, select {
+  width: 100%;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 12px;
+  font-size: 16px;
+  box-sizing: border-box;
+}
+
+/* Screen sections */
+.screen {
+  display: block;
+}
+
+/* Verborgen schermen */
+.hidden {
+  display: none;
+}
+
+/* Transaction divs */
+#home div, #pending div {
+  padding: 10px 15px;
+  border-radius: 12px;
+  background-color: #f3f4f6;
+  margin-bottom: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+#pending button {
+  margin-left: 8px;
+  background-color: #10b981;
+  color: white;
+}
+
+#pending button:hover {
+  opacity: 0.85;
+}
+
+#pending button.reject {
+  background-color: #ef4444;
+}
+
+/* Alert messages (gebruik later eventueel voor notifications) */
+.alert {
+  padding: 12px 16px;
+  border-radius: 12px;
+  background-color: #fef3c7;
+  color: #b45309;
+  margin-bottom: 16px;
+  text-align: center;
+}
