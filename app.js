@@ -141,7 +141,7 @@ async function createTransaction() {
     users,
     [currentUser.id, toUser],
     3
-  );
+  ); 
 
   //Maak approval records aan
   const approvalRows = reviewers.map(r => ({
@@ -164,9 +164,10 @@ async function createTransaction() {
 
 async function loadHistory() {
 
-  const { data: transactions, error } = await supabaseClient
+  const { data: transactions } = await supabaseClient
     .from("transactions")
     .select("*")
+    .eq("status", "pending")
     .order("created_at", { ascending: false });
 
   const historyDiv = document.getElementById("history");
@@ -177,42 +178,27 @@ async function loadHistory() {
     return;
   }
 
+  const { data: users } = await supabaseClient
+      .from("users")
+      .select("id, naam");
+
   for (let tx of transactions) {
 
-    // Haal users op
-    const { data: fromUser } = await supabaseClient
-      .from("users")
-      .select("naam")
-      .eq("id", tx.from_user)
-      .single();
-
-    const { data: toUser } = await supabaseClient
-      .from("users")
-      .select("naam")
-      .eq("id", tx.to_user)
-      .single();
-
-    // Haal approvals op
     const { data: approvals } = await supabaseClient
       .from("approvals")
       .select("*")
       .eq("transaction_id", tx.id);
 
-    // Format datum
+    const userMap = {};
+    users.forEach(u => userMap[u.id] = u.naam);
+
     const date = tx.created_at
       ? new Date(tx.created_at).toLocaleString()
       : "Onbekende datum";
 
-    // Bouw jury balk
     let juryHTML = `<div class="jury-bar">`;
 
     for (let approval of approvals) {
-
-      const { data: reviewer } = await supabaseClient
-        .from("users")
-        .select("naam")
-        .eq("id", approval.reviewer_id)
-        .single();
 
       const statusClass =
         approval.decision === "approved"
@@ -223,7 +209,7 @@ async function loadHistory() {
 
       juryHTML += `
         <div class="jury-box ${statusClass}">
-          ${reviewer.naam}
+          ${userMap[approval.reviewer_id]}
         </div>
       `;
     }
@@ -233,7 +219,11 @@ async function loadHistory() {
     historyDiv.innerHTML += `
       <div class="transaction-widget">
         <div class="tx-line1">
-          ${date} — ${fromUser.naam} → ${toUser.naam} — <strong>${tx.amount} credits</strong>
+          ${userMap[tx.from_user]} → ${userMap[tx.to_user]}
+        </div>
+
+        <div class="tx-line1">
+          <strong>${tx.amount.toLocaleString("nl-BE")} credits</strong>
         </div>
         <div class="tx-line2">
           ${tx.reason}
@@ -260,21 +250,45 @@ async function loadPending() {
     return;
   }
 
+  // users één keer ophalen
+  const { data: users } = await supabaseClient
+    .from("users")
+    .select("id, naam");
+
+  const userMap = {};
+  users.forEach(u => userMap[u.id] = u.naam);
+
   for (let approval of approvals) {
 
     const { data: tx } = await supabaseClient
       .from("transactions")
       .select("*")
       .eq("id", approval.transaction_id)
+      .eq("status", "pending")
       .maybeSingle();
 
     if (!tx) continue;
 
     pending.innerHTML += `
-      <div>
-        ${tx.amount} credits <i>${tx.reason}</i>
-        <button onclick="approve('${approval.id}')">Approve</button>
-        <button class="reject" onclick="reject('${approval.id}')">Reject</button>
+      <div class="transaction-widget">
+
+        <div class="tx-line1">
+          ${userMap[tx.from_user]} → ${userMap[tx.to_user]}
+        </div>
+
+        <div class="tx-line1">
+          <strong>${tx.amount.toLocaleString("nl-BE")} credits</strong>
+        </div>
+
+        <div class="tx-line2">
+          ${tx.reason}
+        </div>
+
+        <div class="pending-buttons">
+          <button onclick="approve('${approval.id}')">Approve</button>
+          <button class="reject" onclick="reject('${approval.id}')">Reject</button>
+        </div>
+
       </div>
     `;
   }
@@ -282,98 +296,94 @@ async function loadPending() {
 
 async function approve(approvalId) {
 
-  //Update deze approval
   await supabaseClient
     .from("approvals")
     .update({ decision: "approved" })
     .eq("id", approvalId);
 
-  //Haal approval record op
   const { data: approval } = await supabaseClient
     .from("approvals")
-    .select("*")
+    .select("transaction_id")
     .eq("id", approvalId)
     .single();
 
   const transactionId = approval.transaction_id;
 
-  //Check alle approvals van deze transactie
   const { data: allApprovals } = await supabaseClient
     .from("approvals")
-    .select("*")
+    .select("decision")
     .eq("transaction_id", transactionId);
 
-  const allApproved = allApprovals.every(a => a.decision === "approved");
+  const approvedCount = allApprovals.filter(a => a.decision === "approved").length;
+  const rejectedCount = allApprovals.filter(a => a.decision === "rejected").length;
 
-  if (allApproved) {
+  // 3 approvals → uitvoeren
+  if (approvedCount === 2) {
 
-    //Haal transactie op
     const { data: tx } = await supabaseClient
       .from("transactions")
       .select("*")
       .eq("id", transactionId)
       .single();
 
-    //Update transaction status
     await supabaseClient
       .from("transactions")
       .update({ status: "approved" })
       .eq("id", transactionId);
 
-    //Update saldo
-    const { data: toUser } = await supabaseClient
-      .from("users")
-      .select("*")
-      .eq("id", tx.to_user)
-      .single();
+    await supabaseClient.rpc("increment_saldo", {
+      user_id_input: tx.to_user,
+      amount_input: tx.amount
+    });
 
-    const { data: fromUser } = await supabaseClient
-      .from("users")
-      .select("*")
-      .eq("id", tx.from_user)
-      .single();
-
-    await supabaseClient
-      .from("users")
-      .update({ saldo: toUser.saldo + tx.amount })
-      .eq("id", tx.to_user);
-
-    await supabaseClient
-      .from("users")
-      .update({ saldo: fromUser.saldo - tx.amount })
-      .eq("id", tx.from_user);
+    await supabaseClient.rpc("increment_saldo", {
+      user_id_input: tx.from_user,
+      amount_input: -tx.amount
+    });
   }
 
-  loadHome();
-  loadPending();
-  loadHistory();
+  // 2 rejects → afwijzen
+  if (rejectedCount >= 2) {
+    await supabaseClient
+      .from("transactions")
+      .update({ status: "rejected" })
+      .eq("id", transactionId);
+  }
+
+  await loadHome();
+  await loadPending();
+  await loadHistory();
 }
 
 async function reject(approvalId) {
 
-  //Haal approval op
-  const { data: approval } = await supabaseClient
-    .from("approvals")
-    .select("*")
-    .eq("id", approvalId)
-    .single();
-
-  const transactionId = approval.transaction_id;
-
-  //Update deze approval
   await supabaseClient
     .from("approvals")
     .update({ decision: "rejected" })
     .eq("id", approvalId);
 
-  //Zet volledige transactie op rejected
-  await supabaseClient
-    .from("transactions")
-    .update({ status: "rejected" })
-    .eq("id", transactionId);
+  const { data: approval } = await supabaseClient
+    .from("approvals")
+    .select("transaction_id")
+    .eq("id", approvalId)
+    .single();
 
-  loadPending();
-  loadHistory();
+  const { data: allApprovals } = await supabaseClient
+    .from("approvals")
+    .select("decision")
+    .eq("transaction_id", approval.transaction_id);
+
+  const rejectedCount = allApprovals.filter(a => a.decision === "rejected").length;
+
+  if (rejectedCount >= 2) {
+    await supabaseClient
+      .from("transactions")
+      .update({ status: "rejected" })
+      .eq("id", approval.transaction_id);
+  }
+
+  await loadPending();
+  await loadHistory();
 }
 
 loadUsers();

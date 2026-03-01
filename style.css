@@ -141,6 +141,13 @@ input, select {
 .tx-line2 {
   margin-bottom: 12px;
   color: #555;
+  font-style: italic;
+}
+
+.tx-line1,
+.tx-line2 {
+  width: 100%;
+  display: block;
 }
 
 .jury-bar {
@@ -171,4 +178,38 @@ input, select {
 .jury-pending {
   background-color: #d1d5db;
   color: #333;
+}
+
+.pending-buttons {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  margin-top: 12px;
+}
+
+.pending-buttons button {
+  flex: 1;
+}
+
+.transaction-widget {
+  display: flex;
+  flex-direction: column;
+}
+
+
+#appScreen {
+  overflow: hidden;
+  position: relative;
+  width: 100%;
+}
+
+.screen-container {
+  display: flex;
+  width: 300%; /* 3 schermen */
+  transition: transform 0.3s ease; /* animatie bij loslaten */
+}
+
+.screen {
+  flex: 0 0 100%; /* elk scherm full width */
+  min-height: 400px; /* je kan aanpassen */
 }
