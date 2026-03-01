@@ -25,23 +25,12 @@
 </div>
 
 <div id="appScreen" class="hidden">
-
-  <nav>
-    <button onclick="showScreen('home'); loadHome()">Home</button>
-    <button onclick="showScreen('new')">Nieuwe Transactie</button>
-    <button onclick="showScreen('pending')">Transacties In Behandeling</button>
-    <button onclick="logout()" style="background: rgba(236, 48, 48, 0.589);">LogOut</button>
-  </nav>
-
   <div id="home" class="screen"></div>
   <div id="new" class="screen hidden"></div>
-
   <div id="pending" class="screen hidden">
     <div id="pendingList"></div>
     <div id="history"></div>
   </div>
-  
-
 </div>
 
 <script src="app.js"></script>

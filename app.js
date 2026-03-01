@@ -394,3 +394,50 @@ if ('serviceWorker' in navigator) {
     .then(() => console.log('Service Worker registered'))
     .catch(err => console.log('Service Worker registration failed:', err));
 }
+
+//================ swipe action ==================//
+const screens = ["home", "new", "pending"];
+let currentScreenIndex = 0;
+
+const container = document.querySelector(".screen-container");
+let startX = 0;
+let currentTranslate = 0;
+let prevTranslate = 0;
+let isDragging = false;
+
+appScreen.addEventListener("touchstart", e => {
+  startX = e.touches[0].clientX;
+  isDragging = true;
+  container.style.transition = "none"; // stop animatie tijdens drag
+});
+
+appScreen.addEventListener("touchmove", e => {
+  if (!isDragging) return;
+  const currentX = e.touches[0].clientX;
+  const deltaX = currentX - startX;
+  currentTranslate = prevTranslate + deltaX;
+  container.style.transform = `translateX(${currentTranslate}px)`;
+});
+
+appScreen.addEventListener("touchend", e => {
+  isDragging = false;
+  const movedBy = currentTranslate - prevTranslate;
+
+  // swipe drempel
+  if (movedBy < -50 && currentScreenIndex < screens.length - 1) currentScreenIndex++;
+  if (movedBy > 50 && currentScreenIndex > 0) currentScreenIndex--;
+
+  // spring naar juiste positie
+  setScreenPosition();
+});
+
+function setScreenPosition() {
+  const width = appScreen.offsetWidth;
+  currentTranslate = -currentScreenIndex * width;
+  prevTranslate = currentTranslate;
+  container.style.transition = "transform 0.3s ease";
+  container.style.transform = `translateX(${currentTranslate}px)`;
+}
+
+// initial
+setScreenPosition();
