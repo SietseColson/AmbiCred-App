@@ -90,7 +90,8 @@ input, select {
 }
 
 /* Transaction divs */
-#home div, #pending div {
+#home > div,
+#pendingList > div {
   padding: 10px 15px;
   border-radius: 12px;
   background-color: #f3f4f6;
@@ -144,14 +145,14 @@ input, select {
 
 .jury-bar {
   display: flex;
-  gap: 8px;
+  gap: 2px;
 }
 
 .jury-box {
   flex: 1;
   padding: 8px;
   text-align: center;
-  border-radius: 10px;
+  border-radius: 3px;
   font-size: 14px;
   background-color: #e5e7eb;
   color: #333;

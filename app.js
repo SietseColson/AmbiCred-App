@@ -266,13 +266,15 @@ async function loadPending() {
       .from("transactions")
       .select("*")
       .eq("id", approval.transaction_id)
-      .single();
+      .maybeSingle();
+
+    if (!tx) continue;
 
     pending.innerHTML += `
       <div>
         ${tx.amount} credits <i>${tx.reason}</i>
         <button onclick="approve('${approval.id}')">Approve</button>
-        <button onclick="reject('${approval.id}')">Reject</button>
+        <button class="reject" onclick="reject('${approval.id}')">Reject</button>
       </div>
     `;
   }
