@@ -375,6 +375,7 @@ async function reject(approvalId) {
 }
 
 loadUsers();
+loadHistory();
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js')
