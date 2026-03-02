@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Credit App</title>
+<title>AmbiCred</title>
 
 <link rel="manifest" href="manifest.json">
 <link rel="stylesheet" href="style.css">
@@ -14,7 +14,6 @@
 <body>
 
 <div id="loginScreen">
-  <h1>Wie ben je?</h1>
   <div id="userButtons"></div>
 </div>
 
@@ -31,6 +30,13 @@
     <div id="pendingList"></div>
     <div id="history"></div>
   </div>
+
+  <nav>
+    <button onclick="showScreen('home'); loadHome()">Home</button>
+    <button onclick="showScreen('new')">Nieuwe Transactie</button>
+    <button onclick="showScreen('pending')">Transacties In Behandeling</button>
+    <button onclick="logout()">LogOut</button>
+  </nav>
 </div>
 
 <script src="app.js"></script>

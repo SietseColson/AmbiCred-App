@@ -41,13 +41,19 @@ button {
   display: block;
   width: 100%;
   margin-bottom: 12px;
-  background-color: #4f46e5;
-  color: white;
+  background-color: #97979750;
+  border: 1px solid black;
+  color: rgb(0, 0, 0);
   font-size: 16px;
+  box-shadow: 0 0 5px rgba(0, 0, 0, 0.425);
 }
 
 .user-button:hover {
-  background-color: #4338ca;
+  background-color: #28bd9345;
+  box-shadow: 
+    0 0 20px rgb(0, 0, 0),
+    0 0 15px inset red; 
+  color:#2b00ff;
 }
 
 /* Nav buttons */
@@ -197,7 +203,7 @@ input, select {
 }
 
 
-#appScreen {
+/* #appScreen {
   overflow: hidden;
   position: relative;
   width: 100%;
@@ -205,11 +211,11 @@ input, select {
 
 .screen-container {
   display: flex;
-  width: 300%; /* 3 schermen */
-  transition: transform 0.3s ease; /* animatie bij loslaten */
+  width: 300%; 
+  transition: transform 0.3s ease; 
 }
 
 .screen {
-  flex: 0 0 100%; /* elk scherm full width */
-  min-height: 400px; /* je kan aanpassen */
-}
+  flex: 0 0 100%; 
+  min-height: 400px; 
+} */
