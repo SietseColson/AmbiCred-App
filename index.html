@@ -24,6 +24,12 @@
 </div>
 
 <div id="appScreen" class="hidden">
+
+  <div class="top-ribbon">
+    <div id="userCredits">0 credits</div>
+    <button onclick="logout()">Uitloggen</button>
+  </div>
+  
   <div id="home" class="screen"></div>
   <div id="new" class="screen hidden"></div>
   <div id="pending" class="screen hidden">
@@ -35,7 +41,6 @@
     <button onclick="showScreen('home'); loadHome()">Home</button>
     <button onclick="showScreen('new')">Nieuwe Transactie</button>
     <button onclick="showScreen('pending')">Transacties In Behandeling</button>
-    <button onclick="logout()">LogOut</button>
   </nav>
 </div>
 

@@ -66,9 +66,22 @@ async function loadHome() {
   const home = document.getElementById("home");
   home.innerHTML = "";
 
-  data.forEach(user => {
-    home.innerHTML += `<div>${user.naam}: ${Number(user.saldo).toLocaleString("nl-BE")} credits</div>`;
-  });
+  document.getElementById("userCredits").innerText =
+  `${currentUser.saldo.toLocaleString("nl-BE")} credits`;
+
+  // data.forEach(user => {
+  //   home.innerHTML += `<div>${user.naam}: ${Number(user.saldo).toLocaleString("nl-BE")} credits</div>`;
+  // });
+
+  data.forEach((user, index) => {
+  home.innerHTML += `
+    <div class="leaderboard-row">
+      <div class="lb-rank">${index + 1}.</div>
+      <div class="lb-name">${user.naam}</div>
+      <div class="lb-saldo">${Number(user.saldo).toLocaleString("nl-BE")}</div>
+    </div>
+  `;
+});
 }
 
 async function loadNewTransaction() {
