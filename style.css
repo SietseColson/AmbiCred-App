@@ -94,35 +94,7 @@ button:active {
 }
 
 /* ========== Navigation ========== */
-/* ========== Fixed Bottom Navigation ========== */
-
 nav {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  width: 100%;
-
-  display: flex;
-  gap: 10px;
-
-  padding: 14px 16px;
-  background: rgba(15, 23, 42, 0.95);
-  backdrop-filter: blur(12px);
-  border-top: 1px solid var(--border-color);
-
-  z-index: 1000;
-}
-
-nav button {
-  flex: 1;
-  background: var(--bg-soft);
-  color: var(--text-secondary);
-}
-
-nav button:hover {
-  color: white;
-}
-/* nav {
   display: flex;
   justify-content: space-between;
   gap: 10px;
@@ -137,7 +109,7 @@ nav button {
 
 nav button:hover {
   color: white;
-} */
+}
 
 /* ========== Inputs ========== */
 input, select {
