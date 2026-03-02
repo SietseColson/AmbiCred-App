@@ -11,11 +11,19 @@ async function loadUsers() {
   const container = document.getElementById("userButtons");
   container.innerHTML = "";
 
-  data.forEach(user => {
+  data.forEach((user, index) => {
+
     const btn = document.createElement("button");
-    btn.className = "user-button";
-    btn.innerText = `${user.naam}: ${Number(user.saldo).toLocaleString("nl-BE")} credits`;
+    btn.className = "leaderboard-button";
+
+    btn.innerHTML = `
+      <div class="lb-rank">${index + 1}.</div>
+      <div class="lb-name">${user.naam}</div>
+      <div class="lb-saldo">${Number(user.saldo).toLocaleString("nl-BE")}</div>
+    `;
+
     btn.onclick = () => selectUser(user);
+
     container.appendChild(btn);
   });
 }
