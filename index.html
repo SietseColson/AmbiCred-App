@@ -20,14 +20,14 @@
 <div id="pinScreen" class="hidden">
   <h2 id="selectedName"></h2>
   <input type="password" id="pinInput" placeholder="Pincode">
-  <button onclick="login()">Login</button>
+  <button onclick="login()" style="font-size: 14px;">Login</button>
 </div>
 
 <div id="appScreen" class="hidden">
 
   <div class="top-ribbon">
     <div id="userCredits">0 credits</div>
-    <button onclick="logout()">Uitloggen</button>
+    <button onclick="logout()" style="font-size: 14px;">Uitloggen</button>
   </div>
   
   <div id="home" class="screen"></div>
@@ -42,6 +42,30 @@
     <button onclick="showScreen('new')">Nieuwe Transactie</button>
     <button onclick="showScreen('pending')">Review Transacties</button>
   </nav>
+</div>
+
+<div id="creditPopup" class="hidden">
+  <div id="popupContent">
+    <h2 id="popupTitle"></h2>
+    <label>Actie:</label>
+    <select id="creditAction">
+      <option value="add">Toewijzen</option>
+      <option value="remove">Ontnemen</option>
+    </select>
+    <label>Aantal credits:</label>
+    <select id="creditAmount">
+      <option value="1">1</option>
+      <option value="3">3</option>
+      <option value="5">5</option>
+      <option value="10">10</option>
+    </select>
+    <label>Reden:</label>
+    <input type="text" id="creditReason" placeholder="Reden voor wijziging">
+    <div style="margin-top:10px;">
+      <button onclick="submitCreditChange()">Bevestig</button>
+      <button onclick="closePopup()">Annuleren</button>
+    </div>
+  </div>
 </div>
 
 <script src="app.js"></script>

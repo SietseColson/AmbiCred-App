@@ -75,21 +75,86 @@ async function loadHome() {
   home.innerHTML = "";
 
   document.getElementById("userCredits").innerText =
-  `${currentUser.saldo.toLocaleString("nl-BE")} credits`;
-
-  // data.forEach(user => {
-  //   home.innerHTML += `<div>${user.naam}: ${Number(user.saldo).toLocaleString("nl-BE")} credits</div>`;
-  // });
+  `${currentUser.saldo.toLocaleString("nl-BE")} cr.`;
 
   data.forEach((user, index) => {
-  home.innerHTML += `
-    <div class="leaderboard-row">
+    const btn = document.createElement("button");
+    btn.className = "leaderboard-button";
+    btn.innerHTML = `
       <div class="lb-rank">${index + 1}.</div>
       <div class="lb-name">${user.naam}</div>
       <div class="lb-saldo">${Number(user.saldo).toLocaleString("nl-BE")}</div>
-    </div>
-  `;
-});
+    `;
+    btn.onclick = () => openCreditPopup(user);
+    home.appendChild(btn);
+  });
+}
+
+let targetUser = null;
+
+function openCreditPopup(user) {
+  targetUser = user;
+  document.getElementById("popupTitle").innerText = `Wijzig credits van ${user.naam}`;
+  document.getElementById("creditAction").value = "add";
+  document.getElementById("creditAmount").value = "1";
+  document.getElementById("creditReason").value = "";
+  document.getElementById("creditPopup").classList.remove("hidden");
+}
+
+function closePopup() {
+  targetUser = null;
+  document.getElementById("creditPopup").classList.add("hidden");
+}
+
+const bankUserId = "75f4c572-accb-41b2-baa2-4d86556f1ed2"
+
+async function submitCreditChange() {
+  const action = document.getElementById("creditAction").value;
+  const amount = parseInt(document.getElementById("creditAmount").value);
+  const reason = document.getElementById("creditReason").value.trim();
+
+  if (!reason) {
+    alert("Reden invullen is verplicht");
+    return;
+  }
+
+  const signedAmount = action === "add" ? amount : -amount;
+
+  // Insert transaction van bank naar targetUser
+  const { data: txData, error: txError } = await supabaseClient
+    .from("transactions")
+    .insert([{
+      from_user: bankUserId,
+      to_user: targetUser.id,
+      amount: signedAmount,
+      reason: reason,
+      status: "pending",
+      created_by: currentUser.id
+    }])
+    .select()
+    .single();
+
+  if (txError) {
+    alert("Fout bij aanmaken transactie");
+    return;
+  }
+
+  // Jury selecteren zoals bij normale transacties
+  const { data: users } = await supabaseClient.from("users").select("*");
+  const reviewers = pickRandomReviewers(users, [currentUser.id, targetUser.id, bankUserId], 3);
+
+  const approvalRows = reviewers.map(r => ({
+    transaction_id: txData.id,
+    reviewer_id: r.id,
+    decision: "pending"
+  }));
+
+  await supabaseClient.from("approvals").insert(approvalRows);
+
+  closePopup();
+  alert("Transactie is ingediend en wacht op goedkeuring");
+  await loadPending();
+  await loadHistory();
 }
 
 async function loadNewTransaction() {
@@ -244,7 +309,7 @@ async function loadHistory() {
         </div>
 
         <div class="tx-line1">
-          <strong>${tx.amount.toLocaleString("nl-BE")} credits</strong>
+          <strong>${tx.amount.toLocaleString("nl-BE")} cr.</strong>
         </div>
         <div class="tx-line2">
           ${tx.reason}
@@ -298,7 +363,7 @@ async function loadPending() {
         </div>
 
         <div class="tx-line1">
-          <strong>${tx.amount.toLocaleString("nl-BE")} credits</strong>
+          <strong>${tx.amount.toLocaleString("nl-BE")} cr.</strong>
         </div>
 
         <div class="tx-line2">
