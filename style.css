@@ -345,7 +345,7 @@ input:focus, select:focus {
   align-items: center;
   justify-content: center;
 
-  width: 120px;       /* vaste breedte */
+  width: 80px;       /* vaste breedte */
   height: 28px;      /* vaste hoogte */
   padding: 0 8px;    /* beetje padding binnen */
   
