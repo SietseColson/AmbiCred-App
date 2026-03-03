@@ -100,6 +100,33 @@ nav button:hover {
   color: white;
 }
 
+#pendingNavButton {
+  position: relative;
+}
+
+.badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+
+  min-width: 18px;
+  height: 18px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background: var(--danger);
+  color: white;
+  border-radius: 999px;
+
+  font-size: 12px;
+  font-weight: 300;
+}
+
+.badge.hidden {
+  display: none;
+}
 /* ========== Inputs ========== */
 input, select {
   width: 100%;
@@ -248,7 +275,6 @@ input:focus, select:focus {
 .pending-buttons button {
   flex: 1;
 }
-
 /* ========== Top Ribbon ========== */
 
 .top-ribbon {

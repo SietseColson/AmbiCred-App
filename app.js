@@ -5,8 +5,17 @@ window.supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
 let currentUser = null;
 let selectedUser = null;
 
+const bankUserId = "75f4c572-accb-41b2-baa2-4d86556f1ed2"
+
+document.getElementById("pendingNavButton")
+  .addEventListener("click", () => showScreen('pending'));
+
 async function loadUsers() {
-  const { data } = await supabaseClient.from("users").select("*").order("saldo", { ascending: false });
+  const { data } = await supabaseClient
+    .from("users")
+    .select("*")
+    .neq("id", bankUserId)
+    .order("saldo", { ascending: false });
 
   const container = document.getElementById("userButtons");
   container.innerHTML = "";
@@ -43,6 +52,7 @@ function login() {
     document.getElementById("pinScreen").classList.add("hidden");
     document.getElementById("appScreen").classList.remove("hidden");
     initApp();
+    updateNotificationBadge();
   } else {
     alert("Verkeerde pincode");
   }
@@ -57,19 +67,25 @@ function logout() {
 function showScreen(name) {
   document.querySelectorAll(".screen").forEach(s => s.classList.add("hidden"));
   document.getElementById(name).classList.remove("hidden");
+  updateNotificationBadge();
 }
 
 async function initApp() {
   await loadHome();
   await loadNewTransaction();
   await loadPending();
+
   if (currentUser) {
     await loadHistory();
   }
 }
 
 async function loadHome() {
-  const { data } = await supabaseClient.from("users").select("*").order("saldo", { ascending: false });
+  const { data } = await supabaseClient
+    .from("users")
+    .select("*")
+    .neq("id", bankUserId)
+    .order("saldo", { ascending: false });
 
   const home = document.getElementById("home");
   home.innerHTML = "";
@@ -105,8 +121,6 @@ function closePopup() {
   targetUser = null;
   document.getElementById("creditPopup").classList.add("hidden");
 }
-
-const bankUserId = "75f4c572-accb-41b2-baa2-4d86556f1ed2"
 
 async function submitCreditChange() {
   const action = document.getElementById("creditAction").value;
@@ -158,7 +172,7 @@ async function submitCreditChange() {
 }
 
 async function loadNewTransaction() {
-  const { data } = await supabaseClient.from("users").select("*");
+  const { data } = await supabaseClient.from("users").select("*").neq("id", bankUserId);
 
   const newDiv = document.getElementById("new");
   newDiv.innerHTML = `
@@ -199,6 +213,10 @@ async function createTransaction() {
     alert("Een of meer velden zijn leeg, bitch.");
     return;
   }
+  if (amount <= 0) {
+    alert("Alleen strikt positieve bedragen, bitch.");
+    return;
+  }
 
   //Insert transaction
   const { data: txData, error: txError } = await supabaseClient
@@ -225,7 +243,7 @@ async function createTransaction() {
   //Kies random jury (3 personen)
   const reviewers = pickRandomReviewers(
     users,
-    [currentUser.id, toUser],
+    [currentUser.id, toUser, bankUserId],
     3
   ); 
 
@@ -318,6 +336,7 @@ async function loadHistory() {
       </div>
     `;
   }
+  updateNotificationBadge();
 }
 
 async function loadPending() {
@@ -403,7 +422,7 @@ async function approve(approvalId) {
   const approvedCount = allApprovals.filter(a => a.decision === "approved").length;
   const rejectedCount = allApprovals.filter(a => a.decision === "rejected").length;
 
-  // 3 approvals → uitvoeren
+  // 2 approvals → uitvoeren
   if (approvedCount === 2) {
 
     const { data: tx } = await supabaseClient
@@ -426,6 +445,12 @@ async function approve(approvalId) {
       user_id_input: tx.from_user,
       amount_input: -tx.amount
     });
+
+    await supabaseClient
+      .from("approvals")
+      .update({ decision: "expired" })
+      .eq("transaction_id", transactionId)
+      .eq("decision", "pending");
   }
 
   // 2 rejects → afwijzen
@@ -439,6 +464,7 @@ async function approve(approvalId) {
   await loadHome();
   await loadPending();
   await loadHistory();
+  updateNotificationBadge();
 }
 
 async function reject(approvalId) {
@@ -470,6 +496,27 @@ async function reject(approvalId) {
 
   await loadPending();
   await loadHistory();
+  updateNotificationBadge();
+}
+
+async function updateNotificationBadge() {
+  const { data, error } = await supabaseClient
+    .from("approvals")
+    .select("id", { count: "exact" })
+    .eq("reviewer_id", currentUser.id)
+    .eq("decision", "pending");
+
+  if (error) return;
+
+  const count = data.length;
+  const badge = document.getElementById("pendingBadge");
+
+  if (count > 0) {
+    badge.innerText = count;
+    badge.classList.remove("hidden");
+  } else {
+    badge.classList.add("hidden");
+  }
 }
 
 loadUsers();
