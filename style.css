@@ -71,7 +71,6 @@ body {
 #appContent {
   flex: 1;
   padding: 20px;
-  overflow-y: auto; /* enkel dit mag scrollen indien nodig */
 }
 
 /* ========== Headers ========== */
