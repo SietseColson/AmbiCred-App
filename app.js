@@ -56,6 +56,7 @@ function login() {
   } else {
     alert("Verkeerde pincode");
   }
+  updateBankLimitIndicator();
 }
 
 function logout() {
@@ -68,6 +69,7 @@ function showScreen(name) {
   document.querySelectorAll(".screen").forEach(s => s.classList.add("hidden"));
   document.getElementById(name).classList.remove("hidden");
   updateNotificationBadge();
+  updateBankLimitIndicator();
 }
 
 async function initApp() {
@@ -104,6 +106,7 @@ async function loadHome() {
     btn.onclick = () => openCreditPopup(user);
     home.appendChild(btn);
   });
+  updateBankLimitIndicator();
 }
 
 let targetUser = null;
@@ -144,7 +147,8 @@ async function submitCreditChange() {
       amount: signedAmount,
       reason: reason,
       status: "pending",
-      created_by: currentUser.id
+      created_by: currentUser.id,
+      type: "bank"
     }])
     .select()
     .single();
@@ -167,9 +171,9 @@ async function submitCreditChange() {
   await supabaseClient.from("approvals").insert(approvalRows);
 
   closePopup();
-  alert("Transactie is ingediend en wacht op goedkeuring");
   await loadPending();
   await loadHistory();
+  updateBankLimitIndicator();
 }
 
 async function loadNewTransaction() {
@@ -210,6 +214,21 @@ async function createTransaction() {
   const amount = parseInt(document.getElementById("amount").value);
   const reason = document.getElementById("reason").value;
 
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+  const { count, error } = await supabaseClient
+    .from("transactions")
+    .select("*", { count: "exact", head: true })
+    .eq("from_user", currentUser.id)
+    .eq("type", "bank")
+    .gte("created_at", sevenDaysAgo.toISOString());
+
+  if (count >= 5) {
+    alert("Je mag maximaal 5 banktransacties doen per 7 dagen.");
+    return;
+  }
+
   if (!amount || !reason) {
     alert("Een of meer velden zijn leeg, bitch.");
     return;
@@ -228,7 +247,8 @@ async function createTransaction() {
       amount: amount,
       reason: reason,
       status: "pending",
-      created_by: currentUser.id
+      created_by: currentUser.id,
+      type: "standard"
     }])
     .select()
     .single();
@@ -265,6 +285,7 @@ async function createTransaction() {
 
   loadPending();
   loadHistory();
+  updateBankLimitIndicator();
 }
 
 async function loadHistory() {
@@ -517,6 +538,36 @@ async function updateNotificationBadge() {
     badge.classList.remove("hidden");
   } else {
     badge.classList.add("hidden");
+  }
+}
+
+async function updateBankLimitIndicator() {
+
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+  const { count, error } = await supabaseClient
+    .from("transactions")
+    .select("*", { count: "exact", head: true })
+    .eq("created_by", currentUser.id)
+    .eq("type", "bank")
+    .gte("created_at", sevenDaysAgo.toISOString());
+
+  if (error) {
+    console.error(error);
+    return;
+  }
+
+  const remaining = 5 - count;
+
+  const element = document.getElementById("bankLimitInfo");
+
+  if (remaining <= 0) {
+    element.textContent = "0/5 CumTokens";
+    element.style.color = "var(--danger)";
+  } else {
+    element.textContent = remaining + "/5 CumTokens";
+    element.style.color = "var(--warning)";
   }
 }
 

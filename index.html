@@ -21,12 +21,15 @@
   <h2 id="selectedName"></h2>
   <input type="password" id="pinInput" placeholder="Pincode">
   <button onclick="login()" style="font-size: 14px;">Login</button>
+  <button onclick="logout()" style="font-size: 14px;">Terug</button>
+
 </div>
 
 <div id="appScreen" class="hidden">
 
   <div class="top-ribbon">
     <div id="userCredits">0 credits</div>
+    <div id="bankLimitInfo"></div>
     <button onclick="logout()" style="font-size: 14px;">Uitloggen</button>
   </div>
   <div id="appContent">
@@ -59,10 +62,10 @@
     </select>
     <label>Aantal credits:</label>
     <select id="creditAmount">
-      <option value="1">1</option>
-      <option value="3">3</option>
       <option value="5">5</option>
       <option value="10">10</option>
+      <option value="25">25</option>
+      <option value="50">50</option>
     </select>
     <label>Reden:</label>
     <input type="text" id="creditReason" placeholder="Reden voor wijziging">
