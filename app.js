@@ -563,10 +563,10 @@ async function updateBankLimitIndicator() {
   const element = document.getElementById("bankLimitInfo");
 
   if (remaining <= 0) {
-    element.textContent = "0/5 CumTokens";
+    element.textContent = "0/5 Acties";
     element.style.color = "var(--danger)";
   } else {
-    element.textContent = remaining + "/5 CumTokens";
+    element.textContent = remaining + "/5 Acties";
     element.style.color = "var(--warning)";
   }
 }
