@@ -110,6 +110,7 @@ let targetUser = null;
 
 function openCreditPopup(user) {
   targetUser = user;
+  if (targetUser.id === currentUser.id) return;
   document.getElementById("popupTitle").innerText = `Wijzig credits van ${user.naam}`;
   document.getElementById("creditAction").value = "add";
   document.getElementById("creditAmount").value = "1";
