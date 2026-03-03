@@ -28,7 +28,7 @@ async function loadUsers() {
     btn.innerHTML = `
       <div class="lb-rank">${index + 1}.</div>
       <div class="lb-name">${user.naam}</div>
-      <div class="lb-saldo">${Number(user.saldo).toLocaleString("nl-BE")}</div>
+      <div class="lb-saldo">₳ ${Number(user.saldo).toLocaleString("nl-BE")}</div>
     `;
 
     btn.onclick = () => selectUser(user);
@@ -93,7 +93,7 @@ async function loadHome() {
   home.innerHTML = "";
 
   document.getElementById("userCredits").innerText =
-  `${currentUser.saldo.toLocaleString("nl-BE")} cr.`;
+  `₳ ${currentUser.saldo.toLocaleString("nl-BE")}`;
 
   data.forEach((user, index) => {
     const btn = document.createElement("button");
@@ -101,7 +101,7 @@ async function loadHome() {
     btn.innerHTML = `
       <div class="lb-rank">${index + 1}.</div>
       <div class="lb-name">${user.naam}</div>
-      <div class="lb-saldo">${Number(user.saldo).toLocaleString("nl-BE")}</div>
+      <div class="lb-saldo">₳ ${Number(user.saldo).toLocaleString("nl-BE")}</div>
     `;
     btn.onclick = () => openCreditPopup(user);
     home.appendChild(btn);
@@ -276,8 +276,6 @@ async function createTransaction() {
   }));
 
   await supabaseClient.from("approvals").insert(approvalRows);
-
-  alert("Transactie verzocht");
   
   // Reset form
   document.getElementById("amount").value = "";
@@ -349,7 +347,7 @@ async function loadHistory() {
         </div>
 
         <div class="tx-line1">
-          <strong>${tx.amount.toLocaleString("nl-BE")} cr.</strong>
+          <strong>₳ ${tx.amount.toLocaleString("nl-BE")}</strong>
         </div>
         <div class="tx-line2">
           ${tx.reason}
@@ -404,7 +402,7 @@ async function loadPending() {
         </div>
 
         <div class="tx-line1">
-          <strong>${tx.amount.toLocaleString("nl-BE")} cr.</strong>
+          <strong>₳ ${tx.amount.toLocaleString("nl-BE")}</strong>
         </div>
 
         <div class="tx-line2">

@@ -340,6 +340,28 @@ input:focus, select:focus {
   color: var(--warning);
 }
 
+.credit-widget {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 120px;       /* vaste breedte */
+  height: 28px;      /* vaste hoogte */
+  padding: 0 8px;    /* beetje padding binnen */
+  
+  background: var(--bg-soft);  /* subtiel achtergrondje */
+  border-radius: 12px;         /* ronde hoeken zoals button */
+  border: 1px solid var(--border-color);
+
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+
+  text-align: center;
+
+  flex-shrink: 0;    /* voorkomt dat hij krimpt in flex layout */
+}
+
 /* ========== Home Leaderboard ========== */
 
 .leaderboard-row {
