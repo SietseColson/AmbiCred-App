@@ -19,7 +19,7 @@
 
 <div id="pinScreen" class="hidden">
   <h2 id="selectedName"></h2>
-  <input type="password" id="pinInput" placeholder="Pincode">
+  <input type="password" id="pinInput" placeholder="Pincode" inputmode="numeric" pattern="\d*" maxlength="6">
   <button onclick="login()" style="font-size: 14px;">Login</button>
   <button onclick="logout()" style="font-size: 14px;">Terug</button>
 
