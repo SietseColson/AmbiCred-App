@@ -28,7 +28,7 @@ async function loadUsers() {
     btn.innerHTML = `
       <div class="lb-rank">${index + 1}.</div>
       <div class="lb-name">${user.naam}</div>
-      <div class="lb-saldo">₳ ${Number(user.saldo).toLocaleString("nl-BE")}</div>
+      <div class="lb-saldo">${Number(user.saldo).toLocaleString("nl-BE")} ₳</div>
     `;
 
     btn.onclick = () => selectUser(user);
@@ -93,7 +93,7 @@ async function loadHome() {
   home.innerHTML = "";
 
   document.getElementById("userCredits").innerText =
-  `₳ ${currentUser.saldo.toLocaleString("nl-BE")}`;
+  `${currentUser.saldo.toLocaleString("nl-BE")} ₳`;
 
   data.forEach((user, index) => {
     const btn = document.createElement("button");
@@ -342,17 +342,25 @@ async function loadHistory() {
 
     historyDiv.innerHTML += `
       <div class="transaction-widget">
+
+        <div class="tx-line1">
+          Verzocht door: ${userMap[tx.created_by]}
+        </div>
+
         <div class="tx-line1">
           ${userMap[tx.from_user]} → ${userMap[tx.to_user]}
         </div>
 
         <div class="tx-line1">
-          <strong>₳ ${tx.amount.toLocaleString("nl-BE")}</strong>
+          <strong>${tx.amount.toLocaleString("nl-BE")} ₳</strong>
         </div>
+
         <div class="tx-line2">
-          ${tx.reason}
+          Reden: ${tx.reason}
         </div>
+
         ${juryHTML}
+
       </div>
     `;
   }
@@ -398,15 +406,19 @@ async function loadPending() {
       <div class="transaction-widget">
 
         <div class="tx-line1">
+          Verzocht door: ${userMap[tx.created_by]}
+        </div>
+
+        <div class="tx-line1">
           ${userMap[tx.from_user]} → ${userMap[tx.to_user]}
         </div>
 
         <div class="tx-line1">
-          <strong>₳ ${tx.amount.toLocaleString("nl-BE")}</strong>
+          <strong>${tx.amount.toLocaleString("nl-BE")} ₳</strong>
         </div>
 
         <div class="tx-line2">
-          ${tx.reason}
+          Reden: ${tx.reason}
         </div>
 
         <div class="pending-buttons">
