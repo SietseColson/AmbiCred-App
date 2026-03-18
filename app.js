@@ -6,6 +6,8 @@ let currentUser = null;
 let selectedUser = null;
 
 const bankUserId = "75f4c572-accb-41b2-baa2-4d86556f1ed2"
+const AUTO_APPROVE_WINDOW_MS = 48 * 60 * 60 * 1000;
+const EMAIL_NOTIFICATION_FUNCTION = "send-notification-email";
 
 document.getElementById("pendingNavButton")
   .addEventListener("click", () => showScreen('pending'));
@@ -72,7 +74,113 @@ function showScreen(name) {
   updateBankLimitIndicator();
 }
 
+async function triggerEmailNotification(eventType, transactionId) {
+  if (!transactionId) return;
+
+  try {
+    const { error } = await supabaseClient.functions.invoke(
+      EMAIL_NOTIFICATION_FUNCTION,
+      {
+        body: { eventType, transactionId }
+      }
+    );
+
+    if (error) {
+      console.error("Email notification failed:", error);
+    }
+  } catch (error) {
+    console.error("Email notification request failed:", error);
+  }
+}
+
+function getRemainingAutoApproveMs(createdAt) {
+  if (!createdAt) return 0;
+  const createdAtMs = new Date(createdAt).getTime();
+  const expiresAtMs = createdAtMs + AUTO_APPROVE_WINDOW_MS;
+  return Math.max(0, expiresAtMs - Date.now());
+}
+
+function formatRemainingAutoApprove(ms) {
+  if (ms <= 0) return "Nu";
+
+  const totalMinutes = Math.ceil(ms / 60000);
+  const days = Math.floor(totalMinutes / (24 * 60));
+  const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+  const minutes = totalMinutes % 60;
+
+  const parts = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0 || days > 0) parts.push(`${hours}u`);
+  parts.push(`${minutes}m`);
+
+  return parts.join(" ");
+}
+
+function getInitials(name = "") {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(part => part.charAt(0).toUpperCase())
+    .join("");
+}
+
+function updateCountdownLabels() {
+  const labels = document.querySelectorAll(".tx-countdown");
+
+  labels.forEach(label => {
+    const createdAt = label.dataset.createdAt;
+    const remainingMs = getRemainingAutoApproveMs(createdAt);
+    label.textContent = formatRemainingAutoApprove(remainingMs);
+  });
+}
+
+async function executeApprovedTransaction(tx) {
+  await supabaseClient.rpc("increment_saldo", {
+    user_id_input: tx.to_user,
+    amount_input: tx.amount
+  });
+
+  await supabaseClient.rpc("increment_saldo", {
+    user_id_input: tx.from_user,
+    amount_input: -tx.amount
+  });
+
+  await supabaseClient
+    .from("approvals")
+    .update({ decision: "expired" })
+    .eq("transaction_id", tx.id)
+    .eq("decision", "pending");
+}
+
+async function processExpiredPendingTransactions() {
+  const cutoffDate = new Date(Date.now() - AUTO_APPROVE_WINDOW_MS).toISOString();
+
+  const { data: expiredTransactions, error } = await supabaseClient
+    .from("transactions")
+    .select("*")
+    .eq("status", "pending")
+    .lte("created_at", cutoffDate);
+
+  if (error || !expiredTransactions || expiredTransactions.length === 0) return;
+
+  for (let tx of expiredTransactions) {
+    const { data: updatedTx } = await supabaseClient
+      .from("transactions")
+      .update({ status: "approved" })
+      .eq("id", tx.id)
+      .eq("status", "pending")
+      .select("*")
+      .maybeSingle();
+
+    if (!updatedTx) continue;
+
+    await executeApprovedTransaction(updatedTx);
+  }
+}
+
 async function initApp() {
+  await processExpiredPendingTransactions();
   await loadHome();
   await loadNewTransaction();
   await loadPending();
@@ -170,6 +278,8 @@ async function submitCreditChange() {
 
   await supabaseClient.from("approvals").insert(approvalRows);
 
+  void triggerEmailNotification("transaction_created", txData.id);
+
   closePopup();
   await loadPending();
   await loadHistory();
@@ -181,14 +291,32 @@ async function loadNewTransaction() {
 
   const newDiv = document.getElementById("new");
   newDiv.innerHTML = `
-    <h2>Verzoek Transactie</h2>
-    <select id="toUser"></select>
-    <input type="number" id="amount" placeholder="Bedrag">
-    <input type="text" id="reason" placeholder="Reden">
-    <button onclick="createTransaction()">Verstuur</button>
+    <section class="newtx-card">
+      <div class="newtx-header">
+        <h2>Nieuwe Transactie</h2>
+        <p>Kies een ontvanger, vul bedrag en reden in.</p>
+      </div>
+
+      <div class="newtx-form">
+        <label class="newtx-label" for="toUser">Ontvanger</label>
+        <select id="toUser"></select>
+
+        <label class="newtx-label" for="amount">Bedrag</label>
+        <div class="newtx-amount-wrap">
+          <input type="number" id="amount" placeholder="0" min="1" step="1">
+          <span class="newtx-currency">₳</span>
+        </div>
+
+        <label class="newtx-label" for="reason">Reden</label>
+        <textarea id="reason" placeholder="Beschrijf kort waarom deze transactie nodig is"></textarea>
+
+        <button class="newtx-submit" onclick="createTransaction()">Transactie versturen</button>
+      </div>
+    </section>
   `;
 
   const select = document.getElementById("toUser");
+  select.innerHTML = `<option value="" disabled selected>Kies een ontvanger</option>`;
 
   data.forEach(user => {
     if (user.id !== currentUser.id) {
@@ -207,6 +335,50 @@ function pickRandomReviewers(users, excludeIds, count = 3) {
   }
 
   return eligible.slice(0, Math.min(count, eligible.length));
+}
+
+function ensureTransactionSuccessPopup() {
+  if (document.getElementById("txSuccessPopup")) return;
+
+  const popup = document.createElement("div");
+  popup.id = "txSuccessPopup";
+  popup.className = "hidden";
+  popup.innerHTML = `
+    <div id="txSuccessContent">
+      <h3>Transactie verzonden</h3>
+      <p>Je aanvraag is ingediend en wacht op beoordeling.</p>
+      <div class="tx-success-subtitle">Toegewezen beoordelaars</div>
+      <ul id="txSuccessReviewers"></ul>
+      <button onclick="closeTransactionSuccessPopup()">Sluiten</button>
+    </div>
+  `;
+
+  document.body.appendChild(popup);
+}
+
+function closeTransactionSuccessPopup() {
+  const popup = document.getElementById("txSuccessPopup");
+  if (!popup) return;
+  popup.classList.add("hidden");
+}
+
+function showTransactionSuccessPopup(reviewers) {
+  ensureTransactionSuccessPopup();
+
+  const popup = document.getElementById("txSuccessPopup");
+  const list = document.getElementById("txSuccessReviewers");
+
+  if (!popup || !list) return;
+
+  list.innerHTML = "";
+
+  reviewers.forEach((reviewer, index) => {
+    const li = document.createElement("li");
+    li.textContent = `${index + 1}. ${reviewer.naam}`;
+    list.appendChild(li);
+  });
+
+  popup.classList.remove("hidden");
 }
 
 async function createTransaction() {
@@ -229,12 +401,12 @@ async function createTransaction() {
     return;
   }
 
-  if (!amount || !reason) {
-    alert("Een of meer velden zijn leeg, bitch.");
+  if (!toUser || !amount || !reason) {
+    alert("Vul ontvanger, bedrag en reden volledig in.");
     return;
   }
   if (amount <= 0) {
-    alert("Alleen strikt positieve bedragen, bitch.");
+    alert("Gebruik een strikt positief bedrag.");
     return;
   }
 
@@ -276,10 +448,14 @@ async function createTransaction() {
   }));
 
   await supabaseClient.from("approvals").insert(approvalRows);
+  void triggerEmailNotification("transaction_created", txData.id);
   
   // Reset form
+  document.getElementById("toUser").selectedIndex = 0;
   document.getElementById("amount").value = "";
   document.getElementById("reason").value = "";
+
+  showTransactionSuccessPopup(reviewers);
 
   loadPending();
   loadHistory();
@@ -288,6 +464,8 @@ async function createTransaction() {
 
 async function loadHistory() {
 
+  await processExpiredPendingTransactions();
+
   const { data: transactions } = await supabaseClient
     .from("transactions")
     .select("*")
@@ -295,10 +473,25 @@ async function loadHistory() {
     .order("created_at", { ascending: false });
 
   const historyDiv = document.getElementById("history");
-  historyDiv.innerHTML = "<h2>Actieve Transacties</h2>";
+  historyDiv.innerHTML = `
+    <section class="pending-section pending-section-active">
+      <div class="pending-section-header">
+        <h2>Actieve Transacties</h2>
+        <span class="pending-section-chip">Live overzicht</span>
+      </div>
+      <div class="pending-section-content" id="historyContent"></div>
+    </section>
+  `;
+
+  const historyContent = document.getElementById("historyContent");
 
   if (!transactions || transactions.length === 0) {
-    historyDiv.innerHTML += "<p>Momenteel geen actieve transacties.</p>";
+    historyContent.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-title">Geen actieve transacties</div>
+        <div class="empty-state-subtitle">Nieuwe verzoeken verschijnen hier zodra ze worden ingediend.</div>
+      </div>
+    `;
     return;
   }
 
@@ -317,10 +510,22 @@ async function loadHistory() {
     users.forEach(u => userMap[u.id] = u.naam);
 
     const date = tx.created_at
-      ? new Date(tx.created_at).toLocaleString()
+      ? new Date(tx.created_at).toLocaleString("nl-BE")
       : "Onbekende datum";
 
-    let juryHTML = `<div class="jury-bar">`;
+    const rawAmount = Number(tx.amount);
+    const isPenalty = rawAmount < 0;
+    const displayAmount = Math.abs(rawAmount);
+    const displayFrom = isPenalty ? userMap[tx.to_user] : userMap[tx.from_user];
+    const displayTo = isPenalty ? userMap[tx.from_user] : userMap[tx.to_user];
+    const amountBadgeClass = isPenalty
+      ? "tx-amount-badge tx-amount-penalty"
+      : "tx-amount-badge tx-amount-positive";
+    const widgetClass = isPenalty
+      ? "transaction-widget transaction-widget-penalty"
+      : "transaction-widget";
+
+    let juryHTML = `<div class="jury-grid">`;
 
     for (let approval of approvals) {
 
@@ -331,43 +536,67 @@ async function loadHistory() {
           ? "jury-rejected"
           : "jury-pending";
 
+      const reviewerName = userMap[approval.reviewer_id] || "Onbekend";
+      const reviewerInitials = getInitials(reviewerName);
+
       juryHTML += `
-        <div class="jury-box ${statusClass}">
-          ${userMap[approval.reviewer_id]}
+        <div class="jury-chip ${statusClass}">
+          <div class="jury-avatar">${reviewerInitials}</div>
+          <div class="jury-name">${reviewerName}</div>
         </div>
       `;
     }
 
     juryHTML += `</div>`;
 
-    historyDiv.innerHTML += `
-      <div class="transaction-widget">
+    historyContent.innerHTML += `
+      <div class="${widgetClass}">
 
-        <div class="tx-line1">
-          Verzocht door: ${userMap[tx.created_by]}
+        <div class="tx-card-top">
+          <div class="tx-route">
+            <span class="tx-user">${displayFrom}</span>
+            <span class="tx-arrow">→</span>
+            <span class="tx-user">${displayTo}</span>
+          </div>
+          <div class="${amountBadgeClass}">${displayAmount.toLocaleString("nl-BE")} ₳</div>
         </div>
 
-        <div class="tx-line1">
-          ${userMap[tx.from_user]} → ${userMap[tx.to_user]}
+        <div class="tx-reason-box">
+          ${tx.reason}
         </div>
 
-        <div class="tx-line1">
-          <strong>${tx.amount.toLocaleString("nl-BE")} ₳</strong>
+        <div class="tx-meta-row">
+          <div class="tx-meta-pill">
+            Door ${userMap[tx.created_by]}
+          </div>
+          <div class="tx-meta-pill tx-meta-pill-highlight tx-meta-pill-right">
+            <span class="tx-meta-label">Resterend</span>
+            <span class="tx-countdown" data-created-at="${tx.created_at || ""}"></span>
+          </div>
         </div>
 
-        <div class="tx-line2">
-          Reden: ${tx.reason}
+        ${isPenalty ? `<div class="tx-penalty-note">− Inhouding</div>` : ""}
+
+        <div class="jury-title">
+          --- Beoordelingscomité ---
         </div>
 
         ${juryHTML}
 
+        <div class="tx-published">
+          Geplaatst op ${date}
+        </div>
+
       </div>
     `;
   }
+  updateCountdownLabels();
   updateNotificationBadge();
 }
 
 async function loadPending() {
+
+  await processExpiredPendingTransactions();
 
   const { data: approvals } = await supabaseClient
     .from("approvals")
@@ -376,10 +605,26 @@ async function loadPending() {
     .eq("decision", "pending");
 
   const pending = document.getElementById("pendingList");
-  pending.innerHTML = "<h2>Te Beoordelen Transacties</h2>";
+  const reviewCount = approvals ? approvals.length : 0;
+  pending.innerHTML = `
+    <section class="pending-section pending-section-review">
+      <div class="pending-section-header">
+        <h2>Te Beoordelen Transacties</h2>
+        <span class="pending-section-chip">${reviewCount}</span>
+      </div>
+      <div class="pending-section-content" id="pendingReviewContent"></div>
+    </section>
+  `;
+
+  const pendingReviewContent = document.getElementById("pendingReviewContent");
 
   if (!approvals || approvals.length === 0) {
-    pending.innerHTML += "<p>Geen openstaande beoordelingen.</p>";
+    pendingReviewContent.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-title">Alles verwerkt</div>
+        <div class="empty-state-subtitle">Je hebt momenteel geen transacties die op jouw beoordeling wachten.</div>
+      </div>
+    `;
     return;
   }
 
@@ -392,7 +637,6 @@ async function loadPending() {
   users.forEach(u => userMap[u.id] = u.naam);
 
   for (let approval of approvals) {
-
     const { data: tx } = await supabaseClient
       .from("transactions")
       .select("*")
@@ -402,30 +646,38 @@ async function loadPending() {
 
     if (!tx) continue;
 
-    pending.innerHTML += `
-      <div class="transaction-widget">
+    // Show negative amounts as red, swap sender/receiver, color as in Actieve Transacties
+    let fromUser = userMap[tx.from_user];
+    let toUser = userMap[tx.to_user];
+    let amount = tx.amount;
+    let amountClass = "tx-amount-badge tx-amount-review";
+    if (amount < 0) {
+      // Swap sender/receiver for negative
+      [fromUser, toUser] = [toUser, fromUser];
+      amount = Math.abs(amount);
+      amountClass += " tx-amount-penalty";
+    } else {
+      amountClass += " tx-amount-positive";
+    }
 
-        <div class="tx-line1">
-          Verzocht door: ${userMap[tx.created_by]}
+    pendingReviewContent.innerHTML += `
+      <div class="transaction-widget pending-review-widget">
+        <div class="tx-card-top">
+          <div class="tx-route">
+            <span class="tx-user">${fromUser}</span>
+            <span class="tx-arrow">→</span>
+            <span class="tx-user">${toUser}</span>
+          </div>
+          <span class="${amountClass}">${amount.toLocaleString("nl-BE")} ₳</span>
         </div>
-
-        <div class="tx-line1">
-          ${userMap[tx.from_user]} → ${userMap[tx.to_user]}
+        <div class="tx-meta-row">
+          <span class="tx-meta-label">Verzocht door: ${userMap[tx.created_by]}</span>
         </div>
-
-        <div class="tx-line1">
-          <strong>${tx.amount.toLocaleString("nl-BE")} ₳</strong>
-        </div>
-
-        <div class="tx-line2">
-          Reden: ${tx.reason}
-        </div>
-
+        <div class="tx-reason-box">${tx.reason}</div>
         <div class="pending-buttons">
-          <button onclick="approve('${approval.id}')">Approve</button>
-          <button class="reject" onclick="reject('${approval.id}')">Reject</button>
+          <button class="approve-btn" onclick="approve('${approval.id}')">Goedkeuren</button>
+          <button class="reject-btn" onclick="reject('${approval.id}')">Afkeuren</button>
         </div>
-
       </div>
     `;
   }
@@ -461,36 +713,44 @@ async function approve(approvalId) {
       .from("transactions")
       .select("*")
       .eq("id", transactionId)
-      .single();
+      .eq("status", "pending")
+      .maybeSingle();
 
-    await supabaseClient
+    if (!tx) {
+      await loadHome();
+      await loadPending();
+      await loadHistory();
+      updateNotificationBadge();
+      return;
+    }
+
+    const { data: updatedTx } = await supabaseClient
       .from("transactions")
       .update({ status: "approved" })
-      .eq("id", transactionId);
+      .eq("id", transactionId)
+      .eq("status", "pending")
+      .select("*")
+      .maybeSingle();
 
-    await supabaseClient.rpc("increment_saldo", {
-      user_id_input: tx.to_user,
-      amount_input: tx.amount
-    });
-
-    await supabaseClient.rpc("increment_saldo", {
-      user_id_input: tx.from_user,
-      amount_input: -tx.amount
-    });
-
-    await supabaseClient
-      .from("approvals")
-      .update({ decision: "expired" })
-      .eq("transaction_id", transactionId)
-      .eq("decision", "pending");
+    if (updatedTx) {
+      await executeApprovedTransaction(updatedTx);
+      await triggerEmailNotification("transaction_approved", updatedTx.id);
+    }
   }
 
   // 2 rejects → afwijzen
   if (rejectedCount >= 2) {
-    await supabaseClient
+    const { data: rejectedTx } = await supabaseClient
       .from("transactions")
       .update({ status: "rejected" })
-      .eq("id", transactionId);
+      .eq("id", transactionId)
+      .eq("status", "pending")
+      .select("id")
+      .maybeSingle();
+
+    if (rejectedTx) {
+      await triggerEmailNotification("transaction_rejected", rejectedTx.id);
+    }
   }
 
   await loadHome();
@@ -520,10 +780,17 @@ async function reject(approvalId) {
   const rejectedCount = allApprovals.filter(a => a.decision === "rejected").length;
 
   if (rejectedCount >= 2) {
-    await supabaseClient
+    const { data: rejectedTx } = await supabaseClient
       .from("transactions")
       .update({ status: "rejected" })
-      .eq("id", approval.transaction_id);
+      .eq("id", approval.transaction_id)
+      .eq("status", "pending")
+      .select("id")
+      .maybeSingle();
+
+    if (rejectedTx) {
+      await triggerEmailNotification("transaction_rejected", rejectedTx.id);
+    }
   }
 
   await loadPending();
@@ -583,6 +850,7 @@ async function updateBankLimitIndicator() {
 
 loadUsers();
 loadHistory();
+setInterval(updateCountdownLabels, 60000);
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js')
