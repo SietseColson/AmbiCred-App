@@ -72,6 +72,10 @@ function showScreen(name) {
   document.getElementById(name).classList.remove("hidden");
   updateNotificationBadge();
   updateBankLimitIndicator();
+  
+  if (name === "pending") {
+    showPendingTab("review");
+  }
 }
 
 async function triggerEmailNotification(eventType, transactionId) {
@@ -219,7 +223,25 @@ async function loadHome() {
 
 let targetUser = null;
 
-function openCreditPopup(user) {
+async function checkActionsAvailable() {
+  const bankActionCount = await getRecentBankActionCount();
+  
+  if (bankActionCount === null) {
+    alert("Kon je limiet niet controleren. Probeer opnieuw.");
+    return false;
+  }
+  
+  if (bankActionCount >= 5) {
+    alert("Je hebt alle acties voor deze week opgebruikt! Wacht tot je acties worden vernieuwd.");
+    return false;
+  }
+  
+  return true;
+}
+
+async function openCreditPopup(user) {
+  if (!(await checkActionsAvailable())) return;
+  
   targetUser = user;
   if (targetUser.id === currentUser.id) return;
   document.getElementById("popupTitle").innerText = `Wijzig credits van ${user.naam}`;
@@ -234,10 +256,42 @@ function closePopup() {
   document.getElementById("creditPopup").classList.add("hidden");
 }
 
+async function getRecentBankActionCount() {
+  if (!currentUser?.id) return null;
+
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+  const { count, error } = await supabaseClient
+    .from("transactions")
+    .select("id", { count: "exact", head: true })
+    .eq("created_by", currentUser.id)
+    .eq("type", "bank")
+    .gte("created_at", sevenDaysAgo.toISOString());
+
+  if (error) {
+    console.error(error);
+    return null;
+  }
+
+  return count ?? 0;
+}
+
 async function submitCreditChange() {
   const action = document.getElementById("creditAction").value;
   const amount = parseInt(document.getElementById("creditAmount").value);
   const reason = document.getElementById("creditReason").value.trim();
+
+  const bankActionCount = await getRecentBankActionCount();
+  if (bankActionCount === null) {
+    alert("Kon je limiet niet controleren. Probeer opnieuw.");
+    return;
+  }
+
+  if (bankActionCount >= 5) {
+    alert("Je mag maximaal 5 banktransacties doen per 7 dagen.");
+    return;
+  }
 
   if (!reason) {
     alert("Reden invullen is verplicht");
@@ -382,24 +436,11 @@ function showTransactionSuccessPopup(reviewers) {
 }
 
 async function createTransaction() {
+  if (!(await checkActionsAvailable())) return;
+
   const toUser = document.getElementById("toUser").value;
   const amount = parseInt(document.getElementById("amount").value);
   const reason = document.getElementById("reason").value;
-
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-  const { count, error } = await supabaseClient
-    .from("transactions")
-    .select("*", { count: "exact", head: true })
-    .eq("from_user", currentUser.id)
-    .eq("type", "bank")
-    .gte("created_at", sevenDaysAgo.toISOString());
-
-  if (count >= 5) {
-    alert("Je mag maximaal 5 banktransacties doen per 7 dagen.");
-    return;
-  }
 
   if (!toUser || !amount || !reason) {
     alert("Vul ontvanger, bedrag en reden volledig in.");
@@ -595,21 +636,53 @@ async function loadHistory() {
 }
 
 async function loadPending() {
-
   await processExpiredPendingTransactions();
+  
+  // Render navigation
+  const pendingNav = document.getElementById("pendingNav");
+  pendingNav.innerHTML = `
+    <button class="nav-btn active" data-tab="review" onclick="showPendingTab('review')">Te Beoordelen</button>
+    <button class="nav-btn" data-tab="active" onclick="showPendingTab('active')">Actieve</button>
+    <button class="nav-btn" data-tab="archive" onclick="showPendingTab('archive')">Archief</button>
+  `;
+  
+  showPendingTab("review");
+}
 
+function showPendingTab(tab) {
+  // Update nav buttons
+  document.querySelectorAll(".pending-nav button").forEach(btn => {
+    btn.classList.remove("active");
+  });
+  document.querySelector(`.pending-nav button[data-tab="${tab}"]`).classList.add("active");
+  
+  // Load appropriate content
+  const content = document.getElementById("pendingContent");
+  content.innerHTML = "";
+  
+  if (tab === "review") {
+    loadPendingReview();
+  } else if (tab === "active") {
+    loadActiveTransactions();
+  } else if (tab === "archive") {
+    loadTransactionArchive();
+  }
+}
+
+async function loadPendingReview() {
   const { data: approvals } = await supabaseClient
     .from("approvals")
     .select("*")
     .eq("reviewer_id", currentUser.id)
     .eq("decision", "pending");
 
-  const pending = document.getElementById("pendingList");
+  const content = document.getElementById("pendingContent");
   const reviewCount = approvals ? approvals.length : 0;
-  pending.innerHTML = `
+  
+  content.innerHTML = `
     <section class="pending-section pending-section-review">
       <div class="pending-section-header">
-        <h2>Te Beoordelen Transacties</h2>
+        <h2>Te Beoordelen</h2>
         <span class="pending-section-chip">${reviewCount}</span>
       </div>
       <div class="pending-section-content" id="pendingReviewContent"></div>
@@ -622,13 +695,12 @@ async function loadPending() {
     pendingReviewContent.innerHTML = `
       <div class="empty-state">
         <div class="empty-state-title">Alles verwerkt</div>
-        <div class="empty-state-subtitle">Je hebt momenteel geen transacties die op jouw beoordeling wachten.</div>
+        <div class="empty-state-subtitle">Geen transacties in afwachting.</div>
       </div>
     `;
     return;
   }
 
-  // users één keer ophalen
   const { data: users } = await supabaseClient
     .from("users")
     .select("id, naam");
@@ -646,13 +718,11 @@ async function loadPending() {
 
     if (!tx) continue;
 
-    // Show negative amounts as red, swap sender/receiver, color as in Actieve Transacties
     let fromUser = userMap[tx.from_user];
     let toUser = userMap[tx.to_user];
     let amount = tx.amount;
     let amountClass = "tx-amount-badge tx-amount-review";
     if (amount < 0) {
-      // Swap sender/receiver for negative
       [fromUser, toUser] = [toUser, fromUser];
       amount = Math.abs(amount);
       amountClass += " tx-amount-penalty";
@@ -681,6 +751,367 @@ async function loadPending() {
       </div>
     `;
   }
+}
+
+async function loadActiveTransactions() {
+  await processExpiredPendingTransactions();
+
+  const { data: transactions } = await supabaseClient
+    .from("transactions")
+    .select("*")
+    .eq("status", "pending")
+    .order("created_at", { ascending: false });
+
+  const content = document.getElementById("pendingContent");
+  content.innerHTML = `
+    <section class="pending-section pending-section-active">
+      <div class="pending-section-header">
+        <h2>Actieve Transacties</h2>
+        <span class="pending-section-chip">Live</span>
+      </div>
+      <div class="pending-section-content" id="activeContent"></div>
+    </section>
+  `;
+
+  const activeContent = document.getElementById("activeContent");
+
+  if (!transactions || transactions.length === 0) {
+    activeContent.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-title">Geen actieve transacties</div>
+        <div class="empty-state-subtitle">Nieuwe verzoeken verschijnen hier.</div>
+      </div>
+    `;
+    return;
+  }
+
+  const { data: users } = await supabaseClient
+      .from("users")
+      .select("id, naam");
+
+  const userMap = {};
+  users.forEach(u => userMap[u.id] = u.naam);
+
+  for (let tx of transactions) {
+    const { data: approvals } = await supabaseClient
+      .from("approvals")
+      .select("*")
+      .eq("transaction_id", tx.id);
+
+    const date = tx.created_at
+      ? new Date(tx.created_at).toLocaleString("nl-BE")
+      : "Onbekende datum";
+
+    const rawAmount = Number(tx.amount);
+    const isPenalty = rawAmount < 0;
+    const displayAmount = Math.abs(rawAmount);
+    const displayFrom = isPenalty ? userMap[tx.to_user] : userMap[tx.from_user];
+    const displayTo = isPenalty ? userMap[tx.from_user] : userMap[tx.to_user];
+    const amountBadgeClass = isPenalty
+      ? "tx-amount-badge tx-amount-penalty"
+      : "tx-amount-badge tx-amount-positive";
+    const widgetClass = isPenalty
+      ? "transaction-widget transaction-widget-penalty"
+      : "transaction-widget";
+
+    let juryHTML = `<div class="jury-grid">`;
+
+    for (let approval of approvals) {
+      const statusClass =
+        approval.decision === "approved"
+          ? "jury-approved"
+          : approval.decision === "rejected"
+          ? "jury-rejected"
+          : "jury-pending";
+
+      const reviewerName = userMap[approval.reviewer_id] || "Onbekend";
+      const reviewerInitials = getInitials(reviewerName);
+
+      juryHTML += `
+        <div class="jury-chip ${statusClass}">
+          <div class="jury-avatar">${reviewerInitials}</div>
+          <div class="jury-name">${reviewerName}</div>
+        </div>
+      `;
+    }
+
+    juryHTML += `</div>`;
+
+    activeContent.innerHTML += `
+      <div class="${widgetClass}">
+        <div class="tx-card-top">
+          <div class="tx-route">
+            <span class="tx-user">${displayFrom}</span>
+            <span class="tx-arrow">→</span>
+            <span class="tx-user">${displayTo}</span>
+          </div>
+          <div class="${amountBadgeClass}">${displayAmount.toLocaleString("nl-BE")} ₳</div>
+        </div>
+        <div class="tx-reason-box">${tx.reason}</div>
+        <div class="tx-meta-row">
+          <div class="tx-meta-pill">Door ${userMap[tx.created_by]}</div>
+          <div class="tx-meta-pill tx-meta-pill-highlight tx-meta-pill-right">
+            <span class="tx-meta-label">Resterend</span>
+            <span class="tx-countdown" data-created-at="${tx.created_at || ""}"></span>
+          </div>
+        </div>
+        ${isPenalty ? `<div class="tx-penalty-note">− Inhouding</div>` : ""}
+        <div class="jury-title">--- Beoordelingscomité ---</div>
+        ${juryHTML}
+        <div class="tx-published">Geplaatst op ${date}</div>
+      </div>
+    `;
+  }
+  updateCountdownLabels();
+}
+
+async function loadTransactionArchive() {
+  const { data: transactions } = await supabaseClient
+    .from("transactions")
+    .select("*")
+    .in("status", ["approved", "rejected"])
+    .order("created_at", { ascending: false });
+
+  const content = document.getElementById("pendingContent");
+  
+  if (!transactions || transactions.length === 0) {
+    content.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-title">Geen afgeronde transacties</div>
+        <div class="empty-state-subtitle">Transacties verschijnen hier zodra ze zijn afgerond.</div>
+      </div>
+    `;
+    return;
+  }
+
+  const { data: users } = await supabaseClient
+    .from("users")
+    .select("id, naam");
+
+  const userMap = {};
+  users.forEach(u => userMap[u.id] = u.naam);
+
+  content.innerHTML = `<div class="history-list" id="archiveList"></div>`;
+  const archiveList = document.getElementById("archiveList");
+
+  for (let tx of transactions) {
+    const { data: approvals } = await supabaseClient
+      .from("approvals")
+      .select("*")
+      .eq("transaction_id", tx.id);
+
+    const date = tx.created_at
+      ? new Date(tx.created_at).toLocaleDateString("nl-BE")
+      : "Onbekend";
+    
+    const time = tx.created_at
+      ? new Date(tx.created_at).toLocaleTimeString("nl-BE", { hour: "2-digit", minute: "2-digit" })
+      : "";
+
+    const rawAmount = Number(tx.amount);
+    const isPenalty = rawAmount < 0;
+    const displayAmount = Math.abs(rawAmount);
+    const displayFrom = isPenalty ? userMap[tx.to_user] : userMap[tx.from_user];
+    const displayTo = isPenalty ? userMap[tx.from_user] : userMap[tx.to_user];
+    const amountClass = isPenalty ? "negative" : "positive";
+    
+    const statusClass = tx.status === "approved" ? "approved" : "rejected";
+    const statusText = tx.status === "approved" ? "Goedgekeurd" : "Afgewezen";
+
+    let juryHTML = "";
+    for (let approval of approvals) {
+      const statusCls = approval.decision === "approved" ? "approved" : approval.decision === "rejected" ? "rejected" : "pending";
+      const reviewerName = userMap[approval.reviewer_id] || "?";
+      const initials = getInitials(reviewerName);
+      juryHTML += `<div class="history-jury-chip ${statusCls}"><div class="history-jury-avatar">${initials}</div><span>${reviewerName}</span></div>`;
+    }
+
+    archiveList.innerHTML += `
+      <div class="history-item" onclick="this.classList.toggle('expanded')">
+        <div class="history-item-summary">
+          <div class="history-item-route">
+            <div class="history-item-names">
+              <span class="history-item-name">${displayFrom}</span>
+              <span class="history-item-arrow">→</span>
+              <span class="history-item-name">${displayTo}</span>
+            </div>
+          </div>
+          <span class="history-item-amount ${amountClass}">${displayAmount.toLocaleString("nl-BE")} ₳</span>
+          <span class="history-item-toggle">▼</span>
+        </div>
+        <div class="history-item-meta">
+          <span>${date}</span>
+          <span class="history-item-status ${statusClass}">${statusText}</span>
+        </div>
+        <div class="history-item-details">
+          <div class="history-detail-row">
+            <div class="history-detail-label">Van:</div>
+            <div class="history-detail-value">${displayFrom}</div>
+          </div>
+          <div class="history-detail-row">
+            <div class="history-detail-label">Naar:</div>
+            <div class="history-detail-value">${displayTo}</div>
+          </div>
+          <div class="history-detail-row">
+            <div class="history-detail-label">Bedrag:</div>
+            <div class="history-detail-value">${displayAmount.toLocaleString("nl-BE")} ₳</div>
+          </div>
+          <div class="history-detail-row">
+            <div class="history-detail-label">Reden:</div>
+            <div class="history-detail-value">${tx.reason}</div>
+          </div>
+          <div class="history-detail-row">
+            <div class="history-detail-label">Aangevraagd:</div>
+            <div class="history-detail-value">${userMap[tx.created_by]}</div>
+          </div>
+          <div class="history-detail-row">
+            <div class="history-detail-label">Datum:</div>
+            <div class="history-detail-value">${date} ${time}</div>
+          </div>
+          <div class="history-detail-row">
+            <div class="history-detail-label">Status:</div>
+            <div class="history-detail-value">${statusText}</div>
+          </div>
+          <div style="margin-top: 8px;">
+            <div class="history-detail-label" style="margin-bottom: 6px;">Jury:</div>
+            <div class="history-jury-grid">${juryHTML}</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+}
+
+async function loadHistory() {
+
+  await processExpiredPendingTransactions();
+
+  const { data: transactions } = await supabaseClient
+    .from("transactions")
+    .select("*")
+    .eq("status", "pending")
+    .order("created_at", { ascending: false });
+
+  const historyDiv = document.getElementById("history");
+  historyDiv.innerHTML = `
+    <section class="pending-section pending-section-active">
+      <div class="pending-section-header">
+        <h2>Actieve Transacties</h2>
+        <span class="pending-section-chip">Live overzicht</span>
+      </div>
+      <div class="pending-section-content" id="historyContent"></div>
+    </section>
+  `;
+
+  const historyContent = document.getElementById("historyContent");
+
+  if (!transactions || transactions.length === 0) {
+    historyContent.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-title">Geen actieve transacties</div>
+        <div class="empty-state-subtitle">Nieuwe verzoeken verschijnen hier zodra ze worden ingediend.</div>
+      </div>
+    `;
+    return;
+  }
+
+  const { data: users } = await supabaseClient
+      .from("users")
+      .select("id, naam");
+
+  const userMap = {};
+  users.forEach(u => userMap[u.id] = u.naam);
+
+  for (let tx of transactions) {
+
+    const { data: approvals } = await supabaseClient
+      .from("approvals")
+      .select("*")
+      .eq("transaction_id", tx.id);
+
+    const date = tx.created_at
+      ? new Date(tx.created_at).toLocaleString("nl-BE")
+      : "Onbekende datum";
+
+    const rawAmount = Number(tx.amount);
+    const isPenalty = rawAmount < 0;
+    const displayAmount = Math.abs(rawAmount);
+    const displayFrom = isPenalty ? userMap[tx.to_user] : userMap[tx.from_user];
+    const displayTo = isPenalty ? userMap[tx.from_user] : userMap[tx.to_user];
+    const amountBadgeClass = isPenalty
+      ? "tx-amount-badge tx-amount-penalty"
+      : "tx-amount-badge tx-amount-positive";
+    const widgetClass = isPenalty
+      ? "transaction-widget transaction-widget-penalty"
+      : "transaction-widget";
+
+    let juryHTML = `<div class="jury-grid">`;
+
+    for (let approval of approvals) {
+
+      const statusClass =
+        approval.decision === "approved"
+          ? "jury-approved"
+          : approval.decision === "rejected"
+          ? "jury-rejected"
+          : "jury-pending";
+
+      const reviewerName = userMap[approval.reviewer_id] || "Onbekend";
+      const reviewerInitials = getInitials(reviewerName);
+
+      juryHTML += `
+        <div class="jury-chip ${statusClass}">
+          <div class="jury-avatar">${reviewerInitials}</div>
+          <div class="jury-name">${reviewerName}</div>
+        </div>
+      `;
+    }
+
+    juryHTML += `</div>`;
+
+    historyContent.innerHTML += `
+      <div class="${widgetClass}">
+
+        <div class="tx-card-top">
+          <div class="tx-route">
+            <span class="tx-user">${displayFrom}</span>
+            <span class="tx-arrow">→</span>
+            <span class="tx-user">${displayTo}</span>
+          </div>
+          <div class="${amountBadgeClass}">${displayAmount.toLocaleString("nl-BE")} ₳</div>
+        </div>
+
+        <div class="tx-reason-box">
+          ${tx.reason}
+        </div>
+
+        <div class="tx-meta-row">
+          <div class="tx-meta-pill">
+            Door ${userMap[tx.created_by]}
+          </div>
+          <div class="tx-meta-pill tx-meta-pill-highlight tx-meta-pill-right">
+            <span class="tx-meta-label">Resterend</span>
+            <span class="tx-countdown" data-created-at="${tx.created_at || ""}"></span>
+          </div>
+        </div>
+
+        ${isPenalty ? `<div class="tx-penalty-note">− Inhouding</div>` : ""}
+
+        <div class="jury-title">
+          --- Beoordelingscomité ---
+        </div>
+
+        ${juryHTML}
+
+        <div class="tx-published">
+          Geplaatst op ${date}
+        </div>
+
+      </div>
+    `;
+  }
+  updateCountdownLabels();
+  updateNotificationBadge();
 }
 
 async function approve(approvalId) {
@@ -738,21 +1169,6 @@ async function approve(approvalId) {
     }
   }
 
-  // 2 rejects → afwijzen
-  if (rejectedCount >= 2) {
-    const { data: rejectedTx } = await supabaseClient
-      .from("transactions")
-      .update({ status: "rejected" })
-      .eq("id", transactionId)
-      .eq("status", "pending")
-      .select("id")
-      .maybeSingle();
-
-    if (rejectedTx) {
-      await triggerEmailNotification("transaction_rejected", rejectedTx.id);
-    }
-  }
-
   await loadHome();
   await loadPending();
   await loadHistory();
@@ -777,20 +1193,17 @@ async function reject(approvalId) {
     .select("decision")
     .eq("transaction_id", approval.transaction_id);
 
-  const rejectedCount = allApprovals.filter(a => a.decision === "rejected").length;
+  // 1 reject → immediately cancel
+  const { data: rejectedTx } = await supabaseClient
+    .from("transactions")
+    .update({ status: "rejected" })
+    .eq("id", approval.transaction_id)
+    .eq("status", "pending")
+    .select("id")
+    .maybeSingle();
 
-  if (rejectedCount >= 2) {
-    const { data: rejectedTx } = await supabaseClient
-      .from("transactions")
-      .update({ status: "rejected" })
-      .eq("id", approval.transaction_id)
-      .eq("status", "pending")
-      .select("id")
-      .maybeSingle();
-
-    if (rejectedTx) {
-      await triggerEmailNotification("transaction_rejected", rejectedTx.id);
-    }
+  if (rejectedTx) {
+    await triggerEmailNotification("transaction_rejected", rejectedTx.id);
   }
 
   await loadPending();
@@ -819,19 +1232,8 @@ async function updateNotificationBadge() {
 }
 
 async function updateBankLimitIndicator() {
-
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-  const { count, error } = await supabaseClient
-    .from("transactions")
-    .select("*", { count: "exact", head: true })
-    .eq("created_by", currentUser.id)
-    .eq("type", "bank")
-    .gte("created_at", sevenDaysAgo.toISOString());
-
-  if (error) {
-    console.error(error);
+  const count = await getRecentBankActionCount();
+  if (count === null) {
     return;
   }
 
