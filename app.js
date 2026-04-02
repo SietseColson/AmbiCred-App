@@ -9,6 +9,14 @@ const bankUserId = "75f4c572-accb-41b2-baa2-4d86556f1ed2"
 const AUTO_APPROVE_WINDOW_MS = 48 * 60 * 60 * 1000;
 const EMAIL_NOTIFICATION_FUNCTION = "send-notification-email";
 
+// ============================================================
+// TRANSACTIETYPES:
+//   Type A = Banktransactie (via homescreen, user klikt op naam)
+//            → Gaat via jury (3 reviewers), type="bank"
+//   Type B = Directe transactie (via "Nieuwe Transactie" scherm)
+//            → Geen jury nodig, wordt direct uitgevoerd, type="standard"
+// ============================================================
+
 document.getElementById("pendingNavButton")
   .addEventListener("click", () => showScreen('pending'));
 
@@ -277,6 +285,7 @@ async function getRecentBankActionCount() {
   return count ?? 0;
 }
 
+// ── Type A: Banktransactie (met jury) ──────────────────────
 async function submitCreditChange() {
   const action = document.getElementById("creditAction").value;
   const amount = parseInt(document.getElementById("creditAmount").value);
@@ -335,6 +344,7 @@ async function submitCreditChange() {
   void triggerEmailNotification("transaction_created", txData.id);
 
   closePopup();
+  showTransactionSuccessPopup(reviewers);
   await loadPending();
   await loadHistory();
   updateBankLimitIndicator();
@@ -435,9 +445,8 @@ function showTransactionSuccessPopup(reviewers) {
   popup.classList.remove("hidden");
 }
 
+// ── Type B: Directe transactie (zonder jury) ──────────────
 async function createTransaction() {
-  if (!(await checkActionsAvailable())) return;
-
   const toUser = document.getElementById("toUser").value;
   const amount = parseInt(document.getElementById("amount").value);
   const reason = document.getElementById("reason").value;
@@ -451,7 +460,7 @@ async function createTransaction() {
     return;
   }
 
-  //Insert transaction
+  // Type B: direct goedgekeurd, geen jury nodig
   const { data: txData, error: txError } = await supabaseClient
     .from("transactions")
     .insert([{
@@ -459,7 +468,7 @@ async function createTransaction() {
       to_user: toUser,
       amount: amount,
       reason: reason,
-      status: "pending",
+      status: "approved",
       created_by: currentUser.id,
       type: "standard"
     }])
@@ -471,36 +480,29 @@ async function createTransaction() {
     return;
   }
 
-  //Haal alle users op
-  const { data: users } = await supabaseClient.from("users").select("*");
+  // Type B: saldo direct bijwerken (geen jury)
+  await supabaseClient.rpc("increment_saldo", {
+    user_id_input: toUser,
+    amount_input: amount
+  });
 
-  //Kies random jury (3 personen)
-  const reviewers = pickRandomReviewers(
-    users,
-    [currentUser.id, toUser, bankUserId],
-    3
-  ); 
+  await supabaseClient.rpc("increment_saldo", {
+    user_id_input: currentUser.id,
+    amount_input: -amount
+  });
 
-  //Maak approval records aan
-  const approvalRows = reviewers.map(r => ({
-    transaction_id: txData.id,
-    reviewer_id: r.id,
-    decision: "pending"
-  }));
+  void triggerEmailNotification("transaction_approved", txData.id);
 
-  await supabaseClient.from("approvals").insert(approvalRows);
-  void triggerEmailNotification("transaction_created", txData.id);
-  
   // Reset form
   document.getElementById("toUser").selectedIndex = 0;
   document.getElementById("amount").value = "";
   document.getElementById("reason").value = "";
 
-  showTransactionSuccessPopup(reviewers);
+  alert("Transactie voltooid!");
 
+  await loadHome();
   loadPending();
   loadHistory();
-  updateBankLimitIndicator();
 }
 
 async function loadHistory() {
@@ -1138,7 +1140,7 @@ async function approve(approvalId) {
   const rejectedCount = allApprovals.filter(a => a.decision === "rejected").length;
 
   // 2 approvals → uitvoeren
-  if (approvedCount === 2) {
+  if (approvedCount === 1) {
 
     const { data: tx } = await supabaseClient
       .from("transactions")
@@ -1169,6 +1171,21 @@ async function approve(approvalId) {
     }
   }
 
+  // 2 rejects → transactie afwijzen
+  if (rejectedCount >= 2) {
+    const { data: rejectedTx } = await supabaseClient
+      .from("transactions")
+      .update({ status: "rejected" })
+      .eq("id", transactionId)
+      .eq("status", "pending")
+      .select("id")
+      .maybeSingle();
+
+    if (rejectedTx) {
+      await triggerEmailNotification("transaction_rejected", rejectedTx.id);
+    }
+  }
+
   await loadHome();
   await loadPending();
   await loadHistory();
@@ -1193,17 +1210,21 @@ async function reject(approvalId) {
     .select("decision")
     .eq("transaction_id", approval.transaction_id);
 
-  // 1 reject → immediately cancel
-  const { data: rejectedTx } = await supabaseClient
-    .from("transactions")
-    .update({ status: "rejected" })
-    .eq("id", approval.transaction_id)
-    .eq("status", "pending")
-    .select("id")
-    .maybeSingle();
+  const rejectedCount = allApprovals.filter(a => a.decision === "rejected").length;
 
-  if (rejectedTx) {
-    await triggerEmailNotification("transaction_rejected", rejectedTx.id);
+  // 2 rejects → transactie afwijzen
+  if (rejectedCount >= 2) {
+    const { data: rejectedTx } = await supabaseClient
+      .from("transactions")
+      .update({ status: "rejected" })
+      .eq("id", approval.transaction_id)
+      .eq("status", "pending")
+      .select("id")
+      .maybeSingle();
+
+    if (rejectedTx) {
+      await triggerEmailNotification("transaction_rejected", rejectedTx.id);
+    }
   }
 
   await loadPending();
